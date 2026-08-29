@@ -1,0 +1,165 @@
+"""Top-level voice and video workflow orchestration."""
+
+import json
+import math
+import os
+import shutil
+import subprocess
+import tempfile
+
+from .audio import merge_voice, normalize_audio_lufs
+from .config import FFMPEG, FFPROBE, PEXELS_KEY
+from .stock_media import (_segment_time_range, _story_video_duration,
+                          download_missing_stock, replace_short_videos_with_images)
+from .video import render_json_video
+from .voice import generate_voice
+
+
+def _make_voice(cfg, segments, log):
+    if cfg["voice_source"] == "existing":
+        v = cfg["voice_file"]
+        if not v or not os.path.exists(v):
+            log("❌ pick your existing voice file."); return None
+        out_voice = os.path.abspath(cfg.get("voice_out") or "voice_final.mp3")
+        if os.path.abspath(v) == out_voice:
+            log("❌ Existing voice and output must be different files."); return None
+        log("  Normalizing existing voice copy to -16 LUFS...")
+        if not normalize_audio_lufs(v, out_voice):
+            log("❌ Existing voice normalization failed."); return None
+        return out_voice
+
+    out_voice = cfg.get("voice_out") or "voice_final.mp3"
+    tmp = tempfile.mkdtemp(prefix="oneclick_clips_")
+    try:
+        voice_cfg = {
+            "voice_preset": cfg.get("voice_preset", ""),
+            "voice_style": cfg.get("voice_style", ""),
+            "cfg_value": float(cfg.get("cfg_value", 2.0)),
+            "do_normalize": cfg.get("do_normalize", False),
+            "denoise": cfg.get("denoise", False),
+            "auto_emotion": cfg.get("auto_emotion", True),
+            "speaker_lock": cfg.get("speaker_lock", True),
+        }
+        max_workers = int(cfg.get("max_workers", 2))
+
+        log("STEP 1  generating voice (parallel)...")
+        if not generate_voice(segments, cfg.get("voice_ref", ""), tmp, log, voice_cfg, max_workers):
+            log("⚠️ Voice generation had issues, but continuing...")
+
+        log("STEP 2  merging voice + pauses + music...")
+
+        segments_output = cfg.get("segments_output", "")
+        if segments_output:
+            log(f"  📁 Individual segments will be saved to: {segments_output}")
+
+        result = merge_voice(tmp, segments, out_voice, cfg["bg_music"], cfg["bg_percent"], log,
+                             auto_amb=cfg.get("auto_amb", False),
+                             save_segments_to=segments_output)
+        if not result:
+            log("❌ Voice merge failed completely.")
+            return None
+        return result
+    finally:
+        log(f"  📁 Temporary clips kept at: {tmp}")
+        log(f"  📁 Individual segments saved to: {cfg.get('segments_output', 'Not specified')}")
+
+
+def run_voice_only(cfg, log, progress):
+    if not FFMPEG or not FFPROBE:
+        log("❌ ffmpeg not found."); return
+    data = json.load(open(cfg["json"], encoding="utf-8"))
+    segments = data.get("segments", [])
+    voice = _make_voice(cfg, segments, log)
+    if voice:
+        log(f"\n✅ VOICE READY → {voice}")
+
+
+def run_make_video(cfg, log, progress):
+    """Generate/prepare narration, then render video with the engine in 1.py."""
+    if not FFMPEG or not FFPROBE:
+        log("❌ ffmpeg/ffprobe not found.")
+        return None
+    data = json.load(open(cfg["json"], encoding="utf-8"))
+    segments = data.get("segments", [])
+    if not segments:
+        log("❌ Story JSON has no segments.")
+        return None
+
+    silent_voice = ""
+    if cfg.get("video_only"):
+        if cfg.get("full_json_video"):
+            test_duration = _story_video_duration(
+                segments, fallback=max(1, len(segments)) * 15.0)
+            log(f"  full JSON mode: {len(segments)} segments, {test_duration / 60:.1f} min")
+        else:
+            test_duration = max(1.0, float(cfg.get("video_test_duration", 20.0)))
+            timed_segments = []
+            for segment in segments:
+                time_range = _segment_time_range(segment)
+                if time_range and time_range[0] < test_duration:
+                    timed_segments.append(segment)
+            if timed_segments:
+                segments = timed_segments
+            else:
+                test_count = max(1, int(math.ceil(test_duration / 15.0)))
+                segments = segments[:test_count]
+        silent = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        silent.close()
+        silent_voice = silent.name
+        make_silence = subprocess.run(
+            [FFMPEG, "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+             "-t", str(test_duration), "-c:a", "libmp3lame", "-b:a", "64k", silent_voice],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if make_silence.returncode != 0:
+            log("❌ Could not create the silent test timeline.")
+            return None
+        voice = silent_voice
+        log(f"STEP 1  video-only test: skipped voice generation ({test_duration:.1f}s)")
+    else:
+        voice = _make_voice(cfg, segments, log)
+        if not voice:
+            return None
+
+    clips_folder = cfg.get("clips_folder") or (
+            os.path.splitext(os.path.abspath(cfg["json"]))[0] + "_stock_clips")
+    missing = 0
+    json_base = os.path.dirname(os.path.abspath(cfg["json"]))
+    for segment in segments:
+        media = next((str(p) for p in (segment.get("image_or_video") or []) if p), "")
+        resolved = media if os.path.isabs(media) else os.path.join(json_base, media)
+        if not media or not os.path.exists(resolved):
+            missing += 1
+    if missing:
+        log(f"STEP 3  downloading stock video for {missing} missing segments...")
+        count = download_missing_stock(cfg["json"], segments, clips_folder, log)
+        log(f"  stock download complete: {count} new clips saved in {clips_folder}")
+    image_fallbacks = replace_short_videos_with_images(
+        cfg["json"], segments, clips_folder, log)
+    if image_fallbacks:
+        log(f"  short-video fallback: {image_fallbacks} segment(s) changed to slow-zoom images")
+
+    width, height = (int(v) for v in cfg.get("resolution", "1280x720").split("x"))
+    output = os.path.abspath(cfg.get("video_out") or
+                             (os.path.splitext(cfg["json"])[0] + ".mp4"))
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    render_cfg = {"width": width, "height": height, "fps": int(cfg.get("fps", 20)), "crf": int(cfg.get("crf", 18)),
+                  "preview": bool(cfg.get("preview", False)) and not bool(cfg.get("video_only", False)), "out": output,
+                  "title": data.get("title", ""), "subtitle": data.get("subtitle", ""),
+                  "show_title": bool(cfg.get("show_title", True)), "logo": cfg.get("logo", ""),
+                  "use_logo": bool(cfg.get("use_logo", False)), "logo_corner": cfg.get("logo_corner", "bottom-right"),
+                  "channel": cfg.get("channel", ""), "channel_corner": cfg.get("channel_corner", "top-right"),
+                  "mute_audio": bool(cfg.get("video_only", False)),
+                  "effect_style": cfg.get("effect_style", "Horror Cinematic"), "bg_music": cfg.get("bg_music", ""),
+                  "bg_percent": float(cfg.get("bg_percent", 0.18)), "json": cfg["json"]}
+    log("STEP 4  rendering video with jruy.py built-in engine...")
+    try:
+        render_json_video(render_cfg, voice, segments, log, progress)
+    finally:
+        if silent_voice and os.path.exists(silent_voice):
+            try: os.unlink(silent_voice)
+            except OSError: pass
+    if os.path.exists(output) and os.path.getsize(output) > 0:
+        log(f"\n✅ VIDEO READY → {output}")
+        return output
+    log("❌ Video render did not produce an output file.")
+    return None
