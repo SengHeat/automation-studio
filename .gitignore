@@ -4,6 +4,7 @@
 /public/storage
 /storage/*.key
 /vendor
+.venv-chatterbox
 .env
 .env.backup
 .env.testing
@@ -20,5 +21,9 @@ docker-compose.yml
 docker-compose.*.yml
 /Envoy.blade.php
 /.claude/settings.local.json
-/.mp4
-/.mp3
+*.mp4
+*.mp3
+*.remember
+*.log
+__pycache__/
+*.py[cod]

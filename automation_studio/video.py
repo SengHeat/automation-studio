@@ -7,6 +7,8 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .audio import audio_dur, normalize_audio_lufs
 from .config import DEFAULT_STORY_CARD_DURATION, FFMPEG, FFPROBE, STORY_CARD_BG
@@ -19,9 +21,13 @@ def render_json_video(cfg, voice_path, segments, log, progress):
     """Self-contained FFmpeg renderer for JSON-assigned images and videos."""
     width, height = cfg["width"], cfg["height"]
     fps, crf = int(cfg["fps"]), int(cfg["crf"])
-    # Shots are encoded once before xfade and once afterward. Keep the first
-    # pass near-lossless so transitions do not expose block artifacts.
-    intermediate_crf = min(crf, 12)
+    # Shots are encoded once before xfade and once afterward. CRF 18 gives
+    # good visual quality for the intermediate pass with much faster encoding.
+    intermediate_crf = min(crf, 18)
+    # Animated grain is unusually expensive to encode. Bound the bitrate so a
+    # short 720p story cannot consume a gigabyte of the system temp volume.
+    maxrate_kbps = max(4000, int(width * height / (1280 * 720) * 8000))
+    bitrate_limit = ["-maxrate", f"{maxrate_kbps}k", "-bufsize", f"{maxrate_kbps * 2}k"]
     effect_style = cfg.get("effect_style", "Horror Cinematic")
     if effect_style == "Blood Red":
         effect_filter = (
@@ -40,7 +46,7 @@ def render_json_video(cfg, voice_path, segments, log, progress):
             "colorchannelmixer=rr=0.94:gg=0.97:bb=1.06,vignette=PI/5.5,"
             "noise=alls=1.5:allf=u")
     log(f"  horror effect: {effect_style}")
-    windows = _video_windows(voice_path, segments)
+    windows = _video_windows(voice_path, segments, log)
     if cfg.get("preview"):
         limit = min(20.0, audio_dur(voice_path))
         windows = [(a, min(b, limit)) for a, b in windows if a < limit]
@@ -53,89 +59,118 @@ def render_json_video(cfg, voice_path, segments, log, progress):
                               max(0.1, shortest_hold * 0.4)) if len(holds) > 1 else 0.0
 
     work = tempfile.mkdtemp(prefix="jruy_video_")
-    clip_paths = []
-    logical_durations = []
-    try:
-        for number, (media, start, end) in enumerate(holds, 1):
-            logical_duration = max(0.05, end - start)
-            # Extra tail is consumed by xfade, preserving the exact story length.
-            duration = logical_duration + (transition_duration if number < len(holds) else 0.0)
-            logical_durations.append(logical_duration)
-            total_frames = max(1, int(duration * fps))
-            zoom_step = max(0.00004, min(0.0005, 0.08 / total_frames))
-            clip_path = os.path.join(work, f"clip_{number:04d}.mp4")
-            common_filter = (
-                    f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-                    f"crop={width}:{height},setsar=1,"
-                    + effect_filter
-            )
+    # Pre-compute logical_durations (pure math, needed for xfade offsets later)
+    logical_durations = [max(0.05, end - start) for _, start, end in holds]
+    clip_paths = [None] * len(holds)
+    _log_lock = threading.Lock()
+    _completed_count = [0]
+    _failed = [False]
 
-            # JSON timing is rescaled to the generated narration, so a video
-            # that looked long enough before voice generation can still be too
-            # short for its final hold. Do not freeze its last frame. Convert a
-            # representative frame to an image and apply continuous Ken Burns
-            # motion for the complete narration-aligned duration instead.
-            if media and media.lower().endswith(VIDEO_EXT):
-                source_duration = _media_duration(media)
-                if source_duration > 0 and source_duration + 0.25 < logical_duration:
-                    poster = os.path.join(work, f"poster_{number:04d}.jpg")
-                    seek = min(max(0.0, source_duration * 0.35), 3.0)
-                    frame = subprocess.run(
-                        [FFMPEG, "-y", "-ss", f"{seek:.3f}", "-i", media,
-                         "-frames:v", "1", "-q:v", "2", poster],
-                        capture_output=True, text=True,
-                    )
-                    if frame.returncode == 0 and os.path.exists(poster):
+    def _encode_clip(number, media, start, end, logical_duration):
+        duration = logical_duration + (transition_duration if number < len(holds) else 0.0)
+        total_frames = max(1, int(duration * fps))
+        # Always scale the step so the zoom travels exactly 0→8% over the
+        # full clip. Clamping broke short clips (too slow) and long ones
+        # (hit max early then froze).
+        zoom_step = 0.08 / total_frames
+        clip_path = os.path.join(work, f"clip_{number:04d}.mp4")
+        common_filter = (
+                f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+                f"crop={width}:{height},setsar=1,"
+                + effect_filter
+        )
+        used_media = media
+
+        # JSON timing is rescaled to the generated narration, so a video
+        # that looked long enough before voice generation can still be too
+        # short for its final hold. Do not freeze its last frame. Convert a
+        # representative frame to an image and apply continuous Ken Burns
+        # motion for the complete narration-aligned duration instead.
+        if used_media and used_media.lower().endswith(VIDEO_EXT):
+            source_duration = _media_duration(used_media)
+            if source_duration > 0 and source_duration + 0.25 < logical_duration:
+                poster = os.path.join(work, f"poster_{number:04d}.jpg")
+                seek = min(max(0.0, source_duration * 0.35), 3.0)
+                frame = subprocess.run(
+                    [FFMPEG, "-y", "-ss", f"{seek:.3f}", "-i", used_media,
+                     "-frames:v", "1", "-q:v", "2", poster],
+                    capture_output=True, text=True,
+                )
+                if frame.returncode == 0 and os.path.exists(poster):
+                    with _log_lock:
                         log(
                             f"  video hold {number}: source {source_duration:.1f}s < "
                             f"hold {logical_duration:.1f}s; using animated still frame"
                         )
-                        media = poster
+                    used_media = poster
 
-            if not media:
-                cmd = [FFMPEG, "-y", "-f", "lavfi", "-i",
-                       f"color=c=0x1b1f2a:s={width}x{height}:r={fps}:d={duration}"]
-                video_filter = "noise=alls=6:allf=t,format=yuv420p"
-            elif media.lower().endswith(VIDEO_EXT):
-                # Pexels selection prefers a source long enough for this hold.
-                # Never replay a short source: extend its final frame and keep
-                # visual motion with a slow Ken Burns zoom until the next shot.
-                cmd = [FFMPEG, "-y", "-fflags", "+genpts", "-i", media,
-                       "-t", str(duration)]
-                video_filter = (
-                        f"fps={fps},setpts=N/({fps}*TB),"
-                        f"tpad=stop_mode=clone:stop_duration={duration}," + common_filter +
-                        f",zoompan=z='min(zoom+0.00025,1.08)':d=1:"
-                        f"s={width}x{height}:fps={fps},trim=duration={duration},"
-                        "setpts=N/FRAME_RATE/TB,format=yuv420p"
-                )
-            else:
-                cmd = [FFMPEG, "-y", "-loop", "1", "-framerate", str(fps),
-                       "-i", media, "-t", str(duration)]
-                # Animate at 2x resolution, then downsample. Zoompan otherwise
-                # rounds crop movement to full output pixels and visibly jerks.
-                motion_width, motion_height = width * 2, height * 2
-                video_filter = (
-                        f"scale={motion_width}:{motion_height}:force_original_aspect_ratio=increase:"
-                        "flags=lanczos,"
-                        f"crop={motion_width}:{motion_height},setsar=1,"
-                        f"zoompan=z='min(max(pzoom,1.0)+{zoom_step:.7f},1.08)':"
-                        "x='trunc(iw/2-iw/zoom/2)':y='trunc(ih/2-ih/zoom/2)':d=1:"
-                        f"s={width}x{height}:fps={fps},"
-                        + effect_filter + ",unsharp=5:5:0.25:3:3:0.10,"
-                                          "format=yuv420p")
+        if not used_media:
+            cmd = [FFMPEG, "-y", "-f", "lavfi", "-i",
+                   f"color=c=0x1b1f2a:s={width}x{height}:r={fps}:d={duration}"]
+            video_filter = "noise=alls=6:allf=t,format=yuv420p"
+        elif used_media.lower().endswith(VIDEO_EXT):
+            # Pexels selection prefers a source long enough for this hold.
+            # Never replay a short source: extend its final frame and keep
+            # visual motion with a slow Ken Burns zoom until the next shot.
+            cmd = [FFMPEG, "-y", "-fflags", "+genpts", "-i", used_media,
+                   "-t", str(duration)]
+            video_filter = (
+                    f"fps={fps},setpts=N/({fps}*TB),"
+                    f"tpad=stop_mode=clone:stop_duration={duration}," + common_filter +
+                    f",zoompan=z='min(zoom+{zoom_step:.7f},1.08)':d=1:"
+                    f"s={width}x{height}:fps={fps},trim=duration={duration},"
+                    "setpts=N/FRAME_RATE/TB,format=yuv420p"
+            )
+        else:
+            cmd = [FFMPEG, "-y", "-loop", "1", "-framerate", str(fps),
+                   "-i", used_media, "-t", str(duration)]
+            # Animate at 2x resolution, then downsample. Zoompan otherwise
+            # rounds crop movement to full output pixels and visibly jerks.
+            motion_width, motion_height = width * 2, height * 2
+            video_filter = (
+                    f"scale={motion_width}:{motion_height}:force_original_aspect_ratio=increase:"
+                    "flags=lanczos,"
+                    f"crop={motion_width}:{motion_height},setsar=1,"
+                    f"zoompan=z='min(max(pzoom,1.0)+{zoom_step:.7f},1.08)':"
+                    "x='trunc(iw/2-iw/zoom/2)':y='trunc(ih/2-ih/zoom/2)':d=1:"
+                    f"s={width}x{height}:fps={fps},"
+                    + effect_filter + ",unsharp=5:5:0.25:3:3:0.10,"
+                                      "format=yuv420p")
+            with _log_lock:
                 log(f"  image hold {number}: sub-pixel 8% zoom + {effect_style} effect")
-            cmd += ["-vf", video_filter, "-an", "-r", str(fps), "-c:v", "libx264",
-                    "-preset", "fast", "-crf", str(intermediate_crf),
-                    "-pix_fmt", "yuv420p", clip_path]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
+        cmd += ["-vf", video_filter, "-an", "-r", str(fps), "-c:v", "libx264",
+                "-preset", "fast", "-crf", str(intermediate_crf),
+                *bitrate_limit,
+                "-pix_fmt", "yuv420p", clip_path]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            with _log_lock:
                 log(f"❌ clip {number} failed:\n" + "\n".join(result.stderr.splitlines()[-6:]))
-                return None
-            clip_paths.append(clip_path)
-            percent = int(number / max(1, len(holds)) * 85)
+            return number, None
+        with _log_lock:
+            _completed_count[0] += 1
+            percent = int(_completed_count[0] / max(1, len(holds)) * 85)
             progress(percent)
             log(f"  rendered hold {number}/{len(holds)} ({percent}%)")
+        return number, clip_path
+
+    cpu_workers = min(4, max(1, (os.cpu_count() or 2) // 2))
+    try:
+        with ThreadPoolExecutor(max_workers=cpu_workers) as executor:
+            clip_tasks = [
+                (i + 1, media, start, end, logical_durations[i])
+                for i, (media, start, end) in enumerate(holds)
+            ]
+            futures = [executor.submit(_encode_clip, *task) for task in clip_tasks]
+            for future in as_completed(futures):
+                number, clip_path = future.result()
+                if clip_path is None:
+                    _failed[0] = True
+                    break
+                clip_paths[number - 1] = clip_path
+        if _failed[0]:
+            return None
+        clip_paths = [p for p in clip_paths if p is not None]
 
         joined = os.path.join(work, "joined.mp4")
         if len(clip_paths) == 1:
@@ -158,7 +193,7 @@ def render_json_video(cfg, voice_path, segments, log, progress):
                 elapsed += logical_durations[index]
             concat_cmd += ["-filter_complex", ";".join(filters), "-map", f"[{previous}]",
                            "-an", "-r", str(fps), "-c:v", "libx264", "-preset", "veryfast",
-                           "-crf", str(crf), "-pix_fmt", "yuv420p", joined]
+                           "-crf", str(crf), *bitrate_limit, "-pix_fmt", "yuv420p", joined]
             log(f"  adding {len(clip_paths) - 1} smooth high-quality transitions "
                 f"({transition_duration:.1f}s, intermediate CRF {intermediate_crf})")
         concat = subprocess.run(concat_cmd, capture_output=True, text=True)
@@ -167,7 +202,20 @@ def render_json_video(cfg, voice_path, segments, log, progress):
                 "\n".join(concat.stderr.splitlines()[-6:]))
             return None
 
+        # The joined file replaces the per-hold intermediates from this point
+        # onward. Releasing them before muxing substantially lowers peak disk use.
+        for clip_path in clip_paths:
+            try:
+                os.unlink(clip_path)
+            except OSError:
+                pass
+
         output = cfg["out"]
+        os.makedirs(os.path.dirname(os.path.abspath(output)), exist_ok=True)
+        partial_output = os.path.join(
+            os.path.dirname(os.path.abspath(output)),
+            f".{os.path.basename(output)}.{os.getpid()}.partial.mp4",
+        )
         voice_duration = min(20.0, audio_dur(voice_path)) if cfg.get("preview") else audio_dur(voice_path)
         background_music = cfg.get("bg_music", "")
         if cfg.get("mute_audio") and background_music and os.path.exists(background_music):
@@ -179,20 +227,25 @@ def render_json_video(cfg, voice_path, segments, log, progress):
             mux_cmd = [FFMPEG, "-y", "-i", joined, "-stream_loop", "-1",
                        "-i", background_music, "-map", "0:v:0", "-map", "1:a:0",
                        "-t", str(voice_duration), "-c:v", "copy", "-af", audio_filter,
-                       "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart", output]
+                       "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart", partial_output]
             log(f"  adding background sound at {music_level:.0%} volume")
         elif cfg.get("mute_audio"):
             mux_cmd = [FFMPEG, "-y", "-i", joined, "-map", "0:v:0", "-t", str(voice_duration),
-                       "-c:v", "copy", "-an", "-movflags", "+faststart", output]
+                       "-c:v", "copy", "-an", "-movflags", "+faststart", partial_output]
         else:
             mux_cmd = [FFMPEG, "-y", "-i", joined, "-i", voice_path,
                        "-map", "0:v:0", "-map", "1:a:0", "-t", str(voice_duration),
                        "-c:v", "copy", "-c:a", "aac", "-b:a", "256k",
-                       "-movflags", "+faststart", output]
+                       "-movflags", "+faststart", partial_output]
         mux = subprocess.run(mux_cmd, capture_output=True, text=True)
         if mux.returncode != 0:
             log("❌ Final audio/video merge failed:\n" + "\n".join(mux.stderr.splitlines()[-6:]))
+            try:
+                os.unlink(partial_output)
+            except OSError:
+                pass
             return None
+        os.replace(partial_output, output)
         progress(100)
         return output
     finally:
@@ -245,8 +298,9 @@ def _make_story_card(width, height, fps, duration, story_number, author, output,
         if has_sound:
             command += ["-af", "volume=0.42,afade=t=in:st=0:d=0.5,afade=t=out:st=" +
                         str(max(0.0, duration - 0.8)) + ":d=0.8"]
-        command += ["-c:v", "libx264", "-preset", "fast", "-crf", "12",
+        command += ["-c:v", "libx264", "-preset", "fast", "-crf", "18",
                     "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "256k",
+                    "-ar", "48000", "-ac", "2",
                     "-shortest", output]
         result = subprocess.run(
             command,
@@ -263,17 +317,31 @@ def _make_story_card(width, height, fps, duration, story_number, author, output,
 
 
 def _ensure_video_audio(source, output, duration):
+    """Normalize every concat piece to AAC 48 kHz stereo.
+
+    The concat demuxer requires matching stream parameters. Copying mono story
+    audio beside stereo story-card audio can otherwise produce audible crackle.
+    """
     probe = subprocess.run(
         [FFPROBE, "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
          "-of", "csv=p=0", source], capture_output=True, text=True)
     if probe.stdout.strip():
-        shutil.copy2(source, output)
-        return output
-    result = subprocess.run(
-        [FFMPEG, "-y", "-i", source, "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
-         "-t", str(duration), "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
-         "-c:a", "aac", "-b:a", "256k", "-shortest", output],
-        capture_output=True, text=True)
+        command = [
+            FFMPEG, "-y", "-i", source, "-t", str(duration),
+            "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy",
+            "-af", "aresample=48000:async=1:first_pts=0",
+            "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-ac", "2",
+            "-shortest", output,
+        ]
+    else:
+        command = [
+            FFMPEG, "-y", "-i", source, "-f", "lavfi",
+            "-i", "anullsrc=r=48000:cl=stereo", "-t", str(duration),
+            "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+            "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-ac", "2",
+            "-shortest", output,
+        ]
+    result = subprocess.run(command, capture_output=True, text=True)
     return output if result.returncode == 0 else None
 
 
@@ -369,8 +437,18 @@ def run_make_multi_story_video(cfg, json_paths, authors, log, progress):
         finally:
             shutil.rmtree(expansion_work, ignore_errors=True)
     if cfg.get("voice_source") == "existing" and not cfg.get("video_only"):
-        shutil.rmtree(expansion_work, ignore_errors=True)
-        raise ValueError("Multi-story voice mode requires generated voice, not one existing voice file.")
+        existing_voice = cfg.get("voice_file", "")
+        if not existing_voice or not os.path.exists(existing_voice):
+            shutil.rmtree(expansion_work, ignore_errors=True)
+            raise ValueError("Choose a valid existing voice file for the compilation narrator.")
+        # One completed narration track cannot be reused for every embedded
+        # story without duplicating and misaligning it. For compilations, use
+        # the selected audio as the cloning reference and generate each story
+        # independently in that same voice.
+        cfg = dict(cfg)
+        cfg["voice_source"] = "generate"
+        cfg["voice_ref"] = existing_voice
+        log("  🎙 Using the existing voice as the narrator reference for all stories")
 
     width, height = (int(value) for value in cfg.get("resolution", "1280x720").split("x"))
     fps = int(cfg.get("fps", 20))
@@ -422,6 +500,10 @@ def run_make_multi_story_video(cfg, json_paths, authors, log, progress):
             if not _ensure_video_audio(story_video, normalized, _media_duration(story_video)):
                 log(f"❌ Could not prepare audio track for Story {index}")
                 return None
+            try:
+                os.unlink(story_video)
+            except OSError:
+                pass
             pieces.append(normalized)
 
         manifest = os.path.join(work, "multi_story.txt")
@@ -430,17 +512,26 @@ def run_make_multi_story_video(cfg, json_paths, authors, log, progress):
                 handle.write("file '" + piece.replace("'", "'\\''") + "'\n")
         expected_video_duration = sum(_video_duration(piece) for piece in pieces)
         log("\nJoining story cards and stories into one YouTube video...")
+        partial_final = os.path.join(
+            os.path.dirname(final_output),
+            f".{os.path.basename(final_output)}.{os.getpid()}.partial.mp4",
+        )
         join = subprocess.run(
             [FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", manifest,
              "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy",
              "-af", "aresample=async=1:first_pts=0", "-c:a", "aac",
              "-b:a", "256k", "-ar", "48000", "-ac", "2",
              "-t", f"{expected_video_duration:.3f}",
-             "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", final_output],
+             "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", partial_final],
             capture_output=True, text=True)
         if join.returncode != 0:
             log("❌ Multi-story join failed: " + "\n".join(join.stderr.splitlines()[-6:]))
+            try:
+                os.unlink(partial_final)
+            except OSError:
+                pass
             return None
+        os.replace(partial_final, final_output)
         progress(100)
         log(f"\n✅ MULTI-STORY VIDEO READY → {final_output}")
         return final_output

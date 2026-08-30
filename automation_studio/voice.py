@@ -1,8 +1,10 @@
-"""VoxCPM2 and Edge TTS voice generation."""
+"""Local Chatterbox, VoxCPM2, and Edge TTS voice generation."""
 
+import gc
 import os
 import random
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -14,6 +16,159 @@ VOXCPM2_URLS = [
     "https://openbmb-voxcpm-demo.hf.space",
     "openbmb/VoxCPM-Demo",
 ]
+
+
+_CHATTERBOX_MODELS = {}
+_CHATTERBOX_LOCK = threading.Lock()
+
+
+def _chatterbox_device(requested="auto"):
+    """Choose the fastest available Chatterbox device."""
+    requested = str(requested or "auto").strip().lower()
+    import torch
+    if requested == "cpu":
+        return "cpu"
+    if requested == "cuda":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    if requested == "mps":
+        mps = getattr(torch.backends, "mps", None)
+        return "mps" if mps and mps.is_available() else "cpu"
+    if torch.cuda.is_available():
+        return "cuda"
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+def _load_chatterbox(device):
+    """Lazily load and cache one model per device."""
+    with _CHATTERBOX_LOCK:
+        if device not in _CHATTERBOX_MODELS:
+            try:
+                from perth.perth_net.perth_net_implicit.perth_watermarker import (  # noqa: F401
+                    PerthImplicitWatermarker,
+                )
+            except ModuleNotFoundError as exc:
+                if exc.name == "pkg_resources":
+                    raise RuntimeError(
+                        "Chatterbox requires pkg_resources for audio watermarking. "
+                        "Run: pip install 'setuptools<81'"
+                    ) from exc
+                raise
+            from chatterbox.tts import ChatterboxTTS
+            _CHATTERBOX_MODELS[device] = ChatterboxTTS.from_pretrained(device=device)
+        return _CHATTERBOX_MODELS[device]
+
+
+def _chatterbox_free_memory(device):
+    """Release cached tensors from the MPS/CUDA device after each generation."""
+    import torch
+    gc.collect()
+    if device == "mps":
+        torch.mps.synchronize()
+        torch.mps.empty_cache()
+    elif device == "cuda":
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+
+
+def generate_voice_chatterbox(segments, voice_ref, out_folder, log, voice_cfg):
+    """Generate segments with the local Chatterbox English TTS model."""
+    try:
+        import torchaudio
+        device = _chatterbox_device(voice_cfg.get("chatterbox_device", "auto"))
+    except ImportError:
+        log("❌ Chatterbox is not installed. Use Python 3.11 and run: pip install chatterbox-tts")
+        return []
+    except Exception as e:
+        log(f"❌ Chatterbox device setup failed: {str(e)[:100]}")
+        return []
+
+    os.makedirs(out_folder, exist_ok=True)
+    requested_device = str(voice_cfg.get("chatterbox_device", "auto") or "auto").lower()
+    if requested_device not in {"auto", device}:
+        log(f"  ⚠️ {requested_device.upper()} is unavailable in this PyTorch build; using {device.upper()}")
+    log(f"  Loading Chatterbox locally on {device.upper()} (first run downloads the model)...")
+    try:
+        model = _load_chatterbox(device)
+    except Exception as e:
+        log(f"❌ Could not load Chatterbox: {str(e)[:140]}")
+        return []
+
+    audio_prompt = voice_ref if voice_ref and os.path.exists(voice_ref) else None
+    if audio_prompt:
+        log(f"  Mode: local voice cloning (ref: {os.path.basename(audio_prompt)})")
+    else:
+        log("  Mode: Chatterbox built-in voice")
+
+    exaggeration = max(0.0, min(2.0, float(voice_cfg.get("chatterbox_exaggeration", 0.5))))
+    cfg_weight = max(0.0, min(1.0, float(voice_cfg.get("chatterbox_cfg_weight", 0.5))))
+    generated = []
+
+    # A model instance is deliberately reused sequentially. Concurrent calls on
+    # the same PyTorch model can corrupt state or exhaust unified/GPU memory.
+    for seg in segments:
+        sid = int(seg.get("segment_id", 0))
+        text = (seg.get("target_text") or "").strip()
+        if not text:
+            continue
+        out_mp3 = os.path.join(out_folder, f"{sid:02d}.mp3")
+        if os.path.exists(out_mp3) and os.path.getsize(out_mp3) > 1500:
+            generated.append(sid)
+            log(f"    ⏭️ seg {sid:02d} already exists")
+            continue
+
+        chunks = split_voice_text(text)
+        parts = []
+        transient_paths = []
+        log(f"    🎙 seg {sid:02d} ({len(chunks)} chunk{'s' if len(chunks) != 1 else ''})")
+        try:
+            # Pre-compute reference conditioning once per segment rather than
+            # redundantly on every chunk, to avoid repeated tensor allocations.
+            if audio_prompt:
+                model.prepare_conditionals(audio_prompt, exaggeration=exaggeration)
+            for index, chunk in enumerate(chunks, 1):
+                wav_path = os.path.join(out_folder, f".{sid:02d}.cb{index:02d}.wav")
+                mp3_path = out_mp3 + f".part{index:02d}.mp3"
+                transient_paths.extend((wav_path, mp3_path))
+                kwargs = {
+                    "exaggeration": exaggeration,
+                    "cfg_weight": cfg_weight,
+                }
+                wav = model.generate(chunk, **kwargs)
+                torchaudio.save(wav_path, wav.cpu(), model.sr)
+                del wav
+                _chatterbox_free_memory(model.device)
+                converted = subprocess.run(
+                    [FFMPEG, "-y", "-i", wav_path,
+                     "-af", "loudnorm=I=-16:TP=-1.5:LRA=7",
+                     "-c:a", "libmp3lame", "-b:a", "192k", mp3_path],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+                try:
+                    os.unlink(wav_path)
+                except OSError:
+                    pass
+                if converted.returncode != 0 or not os.path.exists(mp3_path) or os.path.getsize(mp3_path) <= 1500:
+                    raise RuntimeError(f"audio conversion failed for chunk {index}")
+                parts.append(mp3_path)
+
+            if parts and merge_voice_chunks(parts, out_mp3):
+                generated.append(sid)
+                log(f"    ✅ seg {sid:02d} (Chatterbox local)")
+            else:
+                raise RuntimeError("could not merge generated chunks")
+        except Exception as e:
+            log(f"    ❌ seg {sid:02d}: {str(e)[:120]}")
+        finally:
+            for path in transient_paths:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+            _chatterbox_free_memory(device)
+
+    log(f"  Chatterbox local: {len(generated)}/{len(segments)} segments")
+    return generated
 
 
 def generate_single_segment_retry(client, has_ref, seg, full_ci, out_mp3, voice_ref,
@@ -331,15 +486,29 @@ def generate_voice_edge(segments, out_folder, log, missing_ids=None):
 
 
 def generate_voice(segments, voice_ref, out_folder, log, voice_cfg, max_workers=2):
-    """Generate voice - try VoxCPM2 parallel first, then edge-tts for missing ones"""
-    log("  Attempting VoxCPM2 (parallel)...")
-    generated = generate_voice_voxcpm2(segments, voice_ref, out_folder, log, voice_cfg, max_workers)
+    """Generate voice with the selected primary backend and resilient fallbacks."""
+    backend = str(voice_cfg.get("voice_backend", "voxcpm2")).strip().lower()
+    if backend == "chatterbox":
+        log("  Attempting Chatterbox (local)...")
+        generated = generate_voice_chatterbox(segments, voice_ref, out_folder, log, voice_cfg)
+        missing_after_local = [
+            seg for seg in segments
+            if (seg.get("target_text") or "").strip()
+            and int(seg.get("segment_id", 0)) not in generated
+        ]
+        if missing_after_local:
+            log(f"  ⚠️ {len(missing_after_local)} local segment(s) failed → VoxCPM2 fallback...")
+            generated.extend(generate_voice_voxcpm2(
+                missing_after_local, voice_ref, out_folder, log, voice_cfg, max_workers))
+    else:
+        log("  Attempting VoxCPM2 (parallel)...")
+        generated = generate_voice_voxcpm2(segments, voice_ref, out_folder, log, voice_cfg, max_workers)
 
     all_ids = [int(s.get("segment_id", 0)) for s in segments if s.get("target_text", "").strip()]
     missing = [sid for sid in all_ids if sid not in generated]
 
     if missing:
-        log(f"  ⚠️ {len(missing)} segments failed in VoxCPM2 → edge-tts fallback...")
+        log(f"  ⚠️ {len(missing)} segments still missing → edge-tts fallback...")
         edge_generated = generate_voice_edge(segments, out_folder, log, missing)
         generated.extend(edge_generated)
 

@@ -98,9 +98,11 @@ class App:
                    command=self.do_check).grid(row=r, column=0, columnspan=3, sticky="ew", padx=8, pady=4)
         r += 1
 
-        head("Voice [VoxCPM2 Parallel + edge-tts Fallback]")
+        head("Voice [Chatterbox Local / VoxCPM2 + edge-tts Fallback]")
         self.voice_source = tk.StringVar(value="generate")
         combo("Voice source", self.voice_source, ["generate", "existing"])
+        self.voice_backend = tk.StringVar(value="chatterbox")
+        combo("Generated voice backend", self.voice_backend, ["chatterbox", "voxcpm2"])
 
         self.voice_preset = tk.StringVar(value="Balanced Neutral")
         combo("Voice Preset", self.voice_preset, list(VOICE_PRESETS.keys()))
@@ -114,8 +116,8 @@ class App:
         filerow("...or existing voice mp3/wav (source=existing)", self.voice_file, "audio")
 
         head("VoxCPM2 Advanced Settings")
-        self.cfg_value = tk.StringVar(value="1.7")
-        entryrow("CFG Guidance Scale (1.6-1.8 recommended for Khmer)", self.cfg_value, 8)
+        self.cfg_value = tk.StringVar(value="2.0")
+        entryrow("CFG Guidance (English: 2.0; Khmer: 1.6-1.8)", self.cfg_value, 8)
         self.do_normalize = tk.BooleanVar(value=False)
         checkrow("Text Normalization", self.do_normalize)
         self.denoise = tk.BooleanVar(value=True)
@@ -123,6 +125,14 @@ class App:
 
         self.max_workers = tk.StringVar(value="2")
         entryrow("Parallel workers (1–2 recommended)", self.max_workers, 6)
+
+        head("Chatterbox Local Settings")
+        self.chatterbox_device = tk.StringVar(value="auto")
+        combo("Compute device", self.chatterbox_device, ["auto", "mps", "cuda", "cpu"])
+        self.chatterbox_exaggeration = tk.StringVar(value="0.5")
+        entryrow("Emotion exaggeration (0–2)", self.chatterbox_exaggeration, 8)
+        self.chatterbox_cfg_weight = tk.StringVar(value="0.5")
+        entryrow("CFG weight (0–1)", self.chatterbox_cfg_weight, 8)
 
         head("Background Audio")
         self.bg_music = tk.StringVar()
@@ -208,6 +218,7 @@ class App:
         return {
             "json": self.json.get(),
             "voice_source": self.voice_source.get(),
+            "voice_backend": self.voice_backend.get(),
             "voice_preset": self.voice_preset.get(),
             "voice_style": self.voice_style.get(),
             "voice_ref": self.voice_ref.get(),
@@ -216,6 +227,9 @@ class App:
             "do_normalize": self.do_normalize.get(),
             "denoise": self.denoise.get(),
             "max_workers": int(self.f(self.max_workers, 4)),
+            "chatterbox_device": self.chatterbox_device.get(),
+            "chatterbox_exaggeration": self.f(self.chatterbox_exaggeration, 0.5),
+            "chatterbox_cfg_weight": self.f(self.chatterbox_cfg_weight, 0.5),
             "bg_music": self.bg_music.get(),
             "bg_percent": self.f(self.bg_percent, 0.18),
             "voice_out": self.voice_out.get() or "voice_final.mp3",

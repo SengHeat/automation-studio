@@ -15,6 +15,29 @@ from .video import render_json_video
 from .voice import generate_voice
 
 
+def _flatten_segments(data):
+    """Return a normalized flat segment list from either a simple or compilation JSON."""
+    if data.get("segments"):
+        return data["segments"]
+    stories = data.get("stories", [])
+    if not stories:
+        return []
+    project = data.get("project", {}) if isinstance(data.get("project"), dict) else {}
+    narration_note = project.get("narration_notes", "Slow, restrained horror narration.")
+    flat = []
+    global_id = 1
+    for story in stories:
+        for seg in story.get("segments", []):
+            segment = dict(seg)
+            segment["segment_id"] = global_id
+            segment.setdefault("target_text", segment.get("narration", ""))
+            segment.setdefault("title", f"seg{global_id}")
+            segment.setdefault("control_instruction", narration_note)
+            flat.append(segment)
+            global_id += 1
+    return flat
+
+
 def _make_voice(cfg, segments, log):
     if cfg["voice_source"] == "existing":
         v = cfg["voice_file"]
@@ -32,6 +55,7 @@ def _make_voice(cfg, segments, log):
     tmp = tempfile.mkdtemp(prefix="oneclick_clips_")
     try:
         voice_cfg = {
+            "voice_backend": cfg.get("voice_backend", "voxcpm2"),
             "voice_preset": cfg.get("voice_preset", ""),
             "voice_style": cfg.get("voice_style", ""),
             "cfg_value": float(cfg.get("cfg_value", 2.0)),
@@ -39,11 +63,32 @@ def _make_voice(cfg, segments, log):
             "denoise": cfg.get("denoise", False),
             "auto_emotion": cfg.get("auto_emotion", True),
             "speaker_lock": cfg.get("speaker_lock", True),
+            "chatterbox_device": cfg.get("chatterbox_device", "auto"),
+            "chatterbox_exaggeration": float(cfg.get("chatterbox_exaggeration", 0.5)),
+            "chatterbox_cfg_weight": float(cfg.get("chatterbox_cfg_weight", 0.5)),
         }
         max_workers = int(cfg.get("max_workers", 2))
 
+        voice_ref = cfg.get("voice_ref", "")
+        if voice_ref and os.path.exists(voice_ref):
+            clean_ref = os.path.join(tmp, "reference_clean.wav")
+            cleaned = subprocess.run(
+                [FFMPEG, "-y", "-i", voice_ref,
+                 "-af", "highpass=f=80,lowpass=f=10000,afftdn=nr=40:nf=-38:tn=1:gs=12",
+                 "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", clean_ref],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=90,
+            )
+            if (cleaned.returncode == 0 and os.path.exists(clean_ref)
+                    and os.path.getsize(clean_ref) > 1500):
+                voice_ref = clean_ref
+                log("  🧹 Cleaned reference voice before voice cloning")
+            else:
+                log("  ⚠️ Reference cleanup failed; using the original reference")
+
         log("STEP 1  generating voice (parallel)...")
-        if not generate_voice(segments, cfg.get("voice_ref", ""), tmp, log, voice_cfg, max_workers):
+        if not generate_voice(segments, voice_ref, tmp, log, voice_cfg, max_workers):
             log("⚠️ Voice generation had issues, but continuing...")
 
         log("STEP 2  merging voice + pauses + music...")
@@ -60,7 +105,11 @@ def _make_voice(cfg, segments, log):
             return None
         return result
     finally:
-        log(f"  📁 Temporary clips kept at: {tmp}")
+        if cfg.get("keep_temp_clips"):
+            log(f"  📁 Temporary clips kept at: {tmp}")
+        else:
+            shutil.rmtree(tmp, ignore_errors=True)
+            log("  🧹 Removed temporary voice chunks")
         log(f"  📁 Individual segments saved to: {cfg.get('segments_output', 'Not specified')}")
 
 
@@ -68,7 +117,7 @@ def run_voice_only(cfg, log, progress):
     if not FFMPEG or not FFPROBE:
         log("❌ ffmpeg not found."); return
     data = json.load(open(cfg["json"], encoding="utf-8"))
-    segments = data.get("segments", [])
+    segments = _flatten_segments(data)
     voice = _make_voice(cfg, segments, log)
     if voice:
         log(f"\n✅ VOICE READY → {voice}")
@@ -151,14 +200,15 @@ def run_make_video(cfg, log, progress):
                   "mute_audio": bool(cfg.get("video_only", False)),
                   "effect_style": cfg.get("effect_style", "Horror Cinematic"), "bg_music": cfg.get("bg_music", ""),
                   "bg_percent": float(cfg.get("bg_percent", 0.18)), "json": cfg["json"]}
+    render_cfg["transition_duration"] = float(cfg.get("transition_duration", 1.5))
     log("STEP 4  rendering video with jruy.py built-in engine...")
     try:
-        render_json_video(render_cfg, voice, segments, log, progress)
+        rendered = render_json_video(render_cfg, voice, segments, log, progress)
     finally:
         if silent_voice and os.path.exists(silent_voice):
             try: os.unlink(silent_voice)
             except OSError: pass
-    if os.path.exists(output) and os.path.getsize(output) > 0:
+    if rendered and os.path.exists(rendered) and os.path.getsize(rendered) > 0:
         log(f"\n✅ VIDEO READY → {output}")
         return output
     log("❌ Video render did not produce an output file.")

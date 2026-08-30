@@ -89,27 +89,32 @@ def split_voice_text(text, max_words=30, max_chars=220):
 
 
 def merge_voice_chunks(parts, output):
-    """Join Vox chunks into one clean MP3 without gaps from mixed encodings."""
+    """Join Vox chunks without MP3 padding gaps or waveform-boundary pops."""
     if len(parts) == 1:
         shutil.move(parts[0], output)
         return True
-    manifest = tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8")
     try:
+        from pydub import AudioSegment
+        from pydub.utils import which as _which
+
+        AudioSegment.converter = _which("ffmpeg")
+        decoded = []
         for part in parts:
-            manifest.write("file '" + os.path.abspath(part).replace("'", "'\\''") + "'\n")
-        manifest.close()
-        result = subprocess.run(
-            [FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", manifest.name,
-             "-c:a", "libmp3lame", "-b:a", "192k", output],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90)
-        return result.returncode == 0 and os.path.exists(output) and os.path.getsize(output) > 1500
-    finally:
-        if not manifest.closed:
-            manifest.close()
-        try:
-            os.unlink(manifest.name)
-        except OSError:
-            pass
+            clip = AudioSegment.from_file(part).set_frame_rate(48000).set_channels(1)
+            # Vox chunks can begin/end away from the zero crossing. These tiny
+            # fades suppress the resulting impulse without trimming speech.
+            edge_ms = min(12, max(1, len(clip) // 20))
+            decoded.append(clip.fade_in(edge_ms).fade_out(edge_ms))
+
+        combined = decoded[0]
+        for clip in decoded[1:]:
+            crossfade_ms = min(18, len(combined), len(clip))
+            combined = combined.append(clip, crossfade=crossfade_ms)
+
+        combined.export(output, format="mp3", bitrate="256k")
+        return os.path.exists(output) and os.path.getsize(output) > 1500
+    except Exception:
+        return False
 
 
 _log_lock = threading.Lock()
@@ -263,6 +268,32 @@ def merge_voice(clips_folder, segments, out_voice, bg_music, bg_percent, log,
 
     log(f"  merged voice: {len(voice)/60000:.1f} min  ({used} clips, {len(expected_ids)} total segments)")
 
+    # ── Step 1: clean the narration-only signal ──────────────────────────────
+    # afftdn and agate must run on voice alone; when music is mixed in first
+    # the denoiser treats it as noise and the gate causes audible pumping.
+    tmp_raw = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    tmp_raw.close()
+    voice.export(tmp_raw.name, format="wav")
+
+    tmp_clean = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    tmp_clean.close()
+
+    log("  cleaning narration noise...")
+    subprocess.run([FFMPEG, "-y", "-i", tmp_raw.name,
+                    "-af", (
+                        "highpass=f=80,lowpass=f=10000,"
+                        "afftdn=nr=40:nf=-38:tn=1:gs=12,"
+                        "agate=threshold=0.016:ratio=8:range=0.02:"
+                        "attack=4:release=100"
+                    ),
+                    "-c:a", "pcm_s16le", tmp_clean.name],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    os.unlink(tmp_raw.name)
+
+    # ── Step 2: mix music/ambience into the clean voice ───────────────────────
+    voice = AudioSegment.from_wav(tmp_clean.name)
+    os.unlink(tmp_clean.name)
+
     if bg_music and os.path.exists(bg_music):
         log("  adding background music...")
         music = AudioSegment.from_file(bg_music).set_channels(1)
@@ -286,17 +317,14 @@ def merge_voice(clips_folder, segments, out_voice, bg_music, bg_percent, log,
         amb = amb.apply_gain(voice.dBFS - amb.dBFS - 18).fade_in(2500).fade_out(2500)
         voice = voice.overlay(amb)
 
+    # ── Step 3: loudness-normalize the final mix ──────────────────────────────
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
     tmp.close()
     voice.export(tmp.name, format="wav")
 
-    log("  cleaning narration noise and normalizing to -16 LUFS...")
+    log("  normalizing to -16 LUFS...")
     subprocess.run([FFMPEG, "-y", "-i", tmp.name,
-                    "-af", (
-                        "highpass=f=65,lowpass=f=14500,"
-                        "afftdn=nf=-35:tn=1,"
-                        "loudnorm=I=-16:TP=-1.5:LRA=9"
-                    ),
+                    "-af", "loudnorm=I=-16:TP=-1.5:LRA=9",
                     "-c:a", "libmp3lame", "-b:a", "256k", out_voice],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     os.unlink(tmp.name)

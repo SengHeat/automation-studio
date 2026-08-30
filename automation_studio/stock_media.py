@@ -8,12 +8,34 @@ import ssl
 import subprocess
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .config import FFMPEG, FFPROBE, PEXELS_KEY
 from .audio import audio_dur
 
 
 VIDEO_EXT = (".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v")
+
+_HUMAN_TERMS = re.compile(
+    r"\b(?:person|people|human|man|men|woman|women|boy|boys|girl|girls|child|children|"
+    r"baby|babies|face|faces|facial|portrait|selfie|crowd|couple|family|traveler|"
+    r"travellers|traveler|travelers|worker|workers|model|models|silhouette|body|"
+    r"hand|hands|foot|feet|finger|fingers|eye|eyes|head|heads)\b",
+    re.IGNORECASE,
+)
+
+
+def _face_safe_query(query):
+    """Turn a scene prompt into a conservative people-free stock query."""
+    cleaned = _HUMAN_TERMS.sub(" ", str(query or ""))
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.-")
+    if not cleaned:
+        cleaned = "dark cinematic landscape"
+    return f"{cleaned} uninhabited empty environment scenery"
+
+
+def _mentions_humans(*values):
+    return bool(_HUMAN_TERMS.search(" ".join(str(value or "") for value in values)))
 
 
 def _https_context():
@@ -65,6 +87,10 @@ def _pexels_video_url(query, api_key, per_page=8, minimum_duration=0.0, choice_i
         payload = json.loads(response.read().decode("utf-8"))
     candidates = []
     for video in payload.get("videos", []):
+        # Pexels has no explicit no-people filter. Reject any result whose page
+        # metadata identifies a person, face, crowd, or visible body part.
+        if _mentions_humans(video.get("url"), video.get("user", {}).get("name")):
+            continue
         clip_duration = float(video.get("duration") or 0)
         files = []
         for item in video.get("video_files", []):
@@ -90,6 +116,9 @@ def _pexels_photo_url(query, api_key, per_page=8, choice_index=0):
         payload = json.loads(response.read().decode("utf-8"))
     candidates = []
     for photo in payload.get("photos", []):
+        if _mentions_humans(photo.get("alt"), photo.get("url"),
+                            photo.get("photographer")):
+            continue
         sources = photo.get("src", {})
         link = sources.get("large2x") or sources.get("large") or sources.get("original")
         if link:
@@ -136,73 +165,98 @@ def _download_stock_video(url, destination):
 
 
 def download_missing_stock(json_path, segments, clips_folder, log, api_key=PEXELS_KEY):
-    """Fill missing media in memory with one downloaded stock clip per two segments."""
+    """Fill missing media in memory with one downloaded stock clip per segment (parallel)."""
     if not api_key:
         log("⚠️ Pexels API key is empty; missing media will remain black.")
         return 0
     os.makedirs(clips_folder, exist_ok=True)
     json_base = os.path.dirname(os.path.abspath(json_path))
-    downloaded, last_media = 0, ""
-    index = 0
-    while index < len(segments):
-        segment = segments[index]
+
+    # Identify which segments already have media and which need downloads
+    existing_media = {}  # index -> resolved path
+    tasks = []
+    for index, segment in enumerate(segments):
         existing = next((str(p) for p in (segment.get("image_or_video") or []) if p), "")
         resolved = existing if os.path.isabs(existing) else os.path.join(json_base, existing)
         if existing and os.path.exists(resolved):
-            last_media = resolved
-            index += 1
+            existing_media[index] = resolved
             continue
-
-        query = (segment.get("stock_query") or segment.get("title") or
-                 segment.get("video_feed_description") or "dark cinematic night").strip()
+        raw_query = (segment.get("stock_query") or segment.get("title") or
+                     segment.get("video_feed_description") or "dark cinematic night").strip()
+        query = _face_safe_query(raw_query)
         sid = int(segment.get("segment_id") or index + 1)
         time_range = _segment_time_range(segment)
         needed_duration = max(0.1, time_range[1] - time_range[0]) if time_range else 15.0
         destination = os.path.abspath(os.path.join(
-            clips_folder, f"{_stock_slug(query)[:50]}_{sid:03d}_pick{sid % 8}.mp4"))
+            clips_folder, f"{_stock_slug(query)[:42]}_nopeople_{sid:03d}_pick{sid % 8}.mp4"))
+        tasks.append((index, sid, query, needed_duration, destination))
+
+    if not tasks:
+        return 0
+
+    def _fetch(task):
+        index, sid, query, needed_duration, destination = task
         try:
             if os.path.exists(destination) and os.path.getsize(destination) > 10000:
                 log(f"  stock seg {sid}: using cached {os.path.basename(destination)}")
-            else:
-                log(f"  stock seg {sid}: searching Pexels for '{query}'...")
+                return index, sid, destination, False
+            log(f"  stock seg {sid}: searching Pexels for '{query}'...")
+            link = _pexels_video_url(
+                query, api_key, minimum_duration=needed_duration, choice_index=sid)
+            if not link:
                 link = _pexels_video_url(
-                    query, api_key, minimum_duration=needed_duration, choice_index=sid)
-                if not link and query != "dark cinematic night":
-                    link = _pexels_video_url(
-                        "dark cinematic night", api_key,
-                        minimum_duration=needed_duration, choice_index=sid)
-                if not link:
-                    if last_media:
-                        segment["image_or_video"] = [last_media]
-                        log(f"  ⚠️ stock seg {sid}: no result; carrying previous clip")
-                    else:
-                        log(f"  ⚠️ stock seg {sid}: no video result")
-                    index += 1
-                    continue
-                _download_stock_video(link, destination)
-                log(f"  ✅ stock seg {sid}: downloaded {os.path.basename(destination)}")
+                    "uninhabited empty dark cinematic landscape", api_key,
+                    minimum_duration=needed_duration, choice_index=sid)
+            if not link:
+                log(f"  ⚠️ stock seg {sid}: no video result")
+                return index, sid, None, False
+            _download_stock_video(link, destination)
+            log(f"  ✅ stock seg {sid}: downloaded {os.path.basename(destination)}")
+            return index, sid, destination, True
+        except Exception as error:
+            log(f"  ⚠️ stock seg {sid}: {str(error)[:120]}")
+            return index, sid, None, False
+
+    results = {}  # index -> destination or None
+    downloaded = 0
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(_fetch, task) for task in tasks]
+        for future in as_completed(futures):
+            index, sid, destination, is_new = future.result()
+            results[index] = destination
+            if is_new:
                 downloaded += 1
+
+    # Assign results in order; carry last_media forward for any failures
+    last_media = ""
+    for index, segment in enumerate(segments):
+        if index in existing_media:
+            last_media = existing_media[index]
+            continue
+        if index not in results:
+            continue
+        destination = results[index]
+        sid = int(segment.get("segment_id") or index + 1)
+        if destination:
             segment["image_or_video"] = [destination]
             last_media = destination
-            index += 1
-        except Exception as error:
-            if last_media:
-                segment["image_or_video"] = [last_media]
-                log(f"  ⚠️ stock seg {sid}: download failed; carrying previous clip")
-            else:
-                log(f"  ⚠️ stock seg {sid}: {str(error)[:120]}")
-            index += 1
+        elif last_media:
+            segment["image_or_video"] = [last_media]
+            log(f"  ⚠️ stock seg {sid}: no result; carrying previous clip")
+
     return downloaded
 
 
 def replace_short_videos_with_images(json_path, segments, clips_folder, log,
                                      api_key=PEXELS_KEY):
-    """Replace too-short video assignments with downloaded slow-zoom images."""
+    """Replace too-short video assignments with downloaded slow-zoom images (parallel)."""
     if not api_key:
         return 0
     os.makedirs(clips_folder, exist_ok=True)
     json_base = os.path.dirname(os.path.abspath(json_path))
-    replaced = 0
+
+    # Identify segments that need image fallback (sequential ffprobe calls are fast)
+    tasks = []
     for index, segment in enumerate(segments):
         media = next((str(p) for p in (segment.get("image_or_video") or []) if p), "")
         resolved = media if os.path.isabs(media) else os.path.join(json_base, media)
@@ -213,36 +267,65 @@ def replace_short_videos_with_images(json_path, segments, clips_folder, log,
         available = _media_duration(resolved)
         if available <= 0 or available + 0.5 >= needed:
             continue
-        query = (segment.get("stock_query") or segment.get("title") or
-                 segment.get("video_feed_description") or "dark cinematic night").strip()
+        raw_query = (segment.get("stock_query") or segment.get("title") or
+                     segment.get("video_feed_description") or "dark cinematic night").strip()
+        query = _face_safe_query(raw_query)
         sid = int(segment.get("segment_id") or index + 1)
         image_path = os.path.abspath(os.path.join(
-            clips_folder, f"{_stock_slug(query)[:50]}_{sid:03d}_pick{sid % 8}_fallback.jpg"))
+            clips_folder,
+            f"{_stock_slug(query)[:42]}_nopeople_{sid:03d}_pick{sid % 8}_fallback.jpg"))
+        tasks.append((index, sid, query, available, needed, image_path))
+
+    if not tasks:
+        return 0
+
+    def _fetch_image(task):
+        index, sid, query, available, needed, image_path = task
         try:
             if not os.path.exists(image_path) or os.path.getsize(image_path) < 10000:
                 log(f"  short seg {sid}: video {available:.1f}s < {needed:.1f}s; downloading image...")
                 link = _pexels_photo_url(query, api_key, choice_index=sid)
-                if not link and query != "dark cinematic night":
-                    link = _pexels_photo_url("dark cinematic night", api_key, choice_index=sid)
+                if not link:
+                    link = _pexels_photo_url(
+                        "uninhabited empty dark cinematic landscape", api_key,
+                        choice_index=sid)
                 if not link:
                     log(f"  ⚠️ short seg {sid}: no fallback image found")
-                    continue
+                    return index, sid, None
                 _download_stock_video(link, image_path)
-            segment["image_or_video"] = [image_path]
-            replaced += 1
             log(f"  ✅ short seg {sid}: using slow-zoom image {os.path.basename(image_path)}")
+            return index, sid, image_path
         except Exception as error:
             log(f"  ⚠️ short seg {sid}: image fallback failed: {str(error)[:100]}")
+            return index, sid, None
+
+    results = {}  # index -> image_path or None
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(_fetch_image, task) for task in tasks]
+        for future in as_completed(futures):
+            index, sid, image_path = future.result()
+            results[index] = image_path
+
+    replaced = 0
+    for index, segment in enumerate(segments):
+        if index not in results or not results[index]:
+            continue
+        segment["image_or_video"] = [results[index]]
+        replaced += 1
+
     return replaced
 
 
-def _video_windows(voice_path, segments):
+def _video_windows(voice_path, segments, log=None):
     """Return narration-aligned (start, end) windows for every JSON segment."""
     duration = audio_dur(voice_path)
     timeline_path = voice_path + ".timeline.json"
     if os.path.exists(timeline_path):
         try:
             timeline = json.load(open(timeline_path, encoding="utf-8"))
+            if len(timeline) != len(segments) and log:
+                log(f"  ⚠️ timeline has {len(timeline)} entries but story has "
+                    f"{len(segments)} segments — falling back to JSON timing")
             if len(timeline) == len(segments) and timeline:
                 source_duration = timeline[-1]["end_ms"] / 1000.0
                 scale = duration / source_duration if source_duration else 1.0
