@@ -170,7 +170,10 @@ def merge_voice(clips_folder, segments, out_voice, bg_music, bg_percent, log,
             clip, threshold=-24.0, ratio=3.0, attack=8.0, release=100.0)
         if math.isfinite(clip.dBFS):
             # Avoid excessively boosting a very quiet/noisy recording.
-            gain = max(-8.0, min(8.0, target_voice_dbfs - clip.dBFS))
+            # Large boosts make the Vox/reference noise floor audible between
+            # words. Keep correction gentle; final loudness is handled once
+            # after every segment has been merged.
+            gain = max(-6.0, min(4.0, target_voice_dbfs - clip.dBFS))
             clip = clip.apply_gain(gain)
         return clip.fade_in(40).fade_out(40)
 
@@ -287,10 +290,14 @@ def merge_voice(clips_folder, segments, out_voice, bg_music, bg_percent, log,
     tmp.close()
     voice.export(tmp.name, format="wav")
 
-    log("  normalizing to -14 LUFS...")
+    log("  cleaning narration noise and normalizing to -16 LUFS...")
     subprocess.run([FFMPEG, "-y", "-i", tmp.name,
-                    "-af", "loudnorm=I=-14:TP=-1.0:LRA=11",
-                    "-c:a", "libmp3lame", "-b:a", "192k", out_voice],
+                    "-af", (
+                        "highpass=f=65,lowpass=f=14500,"
+                        "afftdn=nf=-35:tn=1,"
+                        "loudnorm=I=-16:TP=-1.5:LRA=9"
+                    ),
+                    "-c:a", "libmp3lame", "-b:a", "256k", out_voice],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     os.unlink(tmp.name)
 

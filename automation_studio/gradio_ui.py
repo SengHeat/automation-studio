@@ -109,8 +109,11 @@ def _gradio_run_video(json_path, voice_source, voice_preset, voice_style, voice_
                 "story_card_duration": float(story_card_duration),
                 "story_card_bg": story_card_bg or "",
             }
-            result["path"] = run_make_multi_story_video(
+            output_path = run_make_multi_story_video(
                 cfg, json_paths, authors, ui_log, lambda value: None)
+            if not output_path or not os.path.exists(output_path):
+                raise RuntimeError("Video rendering finished without a persistent output file.")
+            result["path"] = output_path
         except Exception:
             ui_log("❌ ERROR:\n" + traceback.format_exc())
         finally:

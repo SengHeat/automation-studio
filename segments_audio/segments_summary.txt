@@ -1,0 +1,10 @@
+Segments generated for: voice_final.mp3
+Total segments: 4
+Successfully generated: 4
+Timeline: /Users/macbook/DRSB-Workplace/automation-studio/voice_final.mp3.timeline.json
+
+Segment files:
+  01.mp3
+  02.mp3
+  03.mp3
+  04.mp3

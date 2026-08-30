@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import urllib.parse
 import urllib.request
@@ -13,6 +14,16 @@ from .audio import audio_dur
 
 
 VIDEO_EXT = (".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v")
+
+
+def _https_context():
+    """Return a verified TLS context that also works with macOS Python installs."""
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
 
 
 def _time_value(value):
@@ -50,7 +61,7 @@ def _pexels_video_url(query, api_key, per_page=8, minimum_duration=0.0, choice_i
            f"&per_page={per_page}&orientation=landscape&size=medium")
     request = urllib.request.Request(
         url, headers={"Authorization": api_key, "User-Agent": "jruy-video-studio/1.0"})
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with urllib.request.urlopen(request, timeout=30, context=_https_context()) as response:
         payload = json.loads(response.read().decode("utf-8"))
     candidates = []
     for video in payload.get("videos", []):
@@ -75,7 +86,7 @@ def _pexels_photo_url(query, api_key, per_page=8, choice_index=0):
            f"&per_page={per_page}&orientation=landscape&size=large")
     request = urllib.request.Request(
         url, headers={"Authorization": api_key, "User-Agent": "jruy-video-studio/1.0"})
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with urllib.request.urlopen(request, timeout=30, context=_https_context()) as response:
         payload = json.loads(response.read().decode("utf-8"))
     candidates = []
     for photo in payload.get("photos", []):
@@ -111,7 +122,9 @@ def _download_stock_video(url, destination):
     partial = destination + ".part"
     request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
-        with urllib.request.urlopen(request, timeout=180) as response, open(partial, "wb") as output:
+        with urllib.request.urlopen(
+                request, timeout=180, context=_https_context()) as response, \
+                open(partial, "wb") as output:
             shutil.copyfileobj(response, output, length=1024 * 1024)
         if os.path.getsize(partial) < 10000:
             raise RuntimeError("downloaded file is too small")

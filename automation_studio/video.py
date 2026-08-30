@@ -69,6 +69,29 @@ def render_json_video(cfg, voice_path, segments, log, progress):
                     f"crop={width}:{height},setsar=1,"
                     + effect_filter
             )
+
+            # JSON timing is rescaled to the generated narration, so a video
+            # that looked long enough before voice generation can still be too
+            # short for its final hold. Do not freeze its last frame. Convert a
+            # representative frame to an image and apply continuous Ken Burns
+            # motion for the complete narration-aligned duration instead.
+            if media and media.lower().endswith(VIDEO_EXT):
+                source_duration = _media_duration(media)
+                if source_duration > 0 and source_duration + 0.25 < logical_duration:
+                    poster = os.path.join(work, f"poster_{number:04d}.jpg")
+                    seek = min(max(0.0, source_duration * 0.35), 3.0)
+                    frame = subprocess.run(
+                        [FFMPEG, "-y", "-ss", f"{seek:.3f}", "-i", media,
+                         "-frames:v", "1", "-q:v", "2", poster],
+                        capture_output=True, text=True,
+                    )
+                    if frame.returncode == 0 and os.path.exists(poster):
+                        log(
+                            f"  video hold {number}: source {source_duration:.1f}s < "
+                            f"hold {logical_duration:.1f}s; using animated still frame"
+                        )
+                        media = poster
+
             if not media:
                 cmd = [FFMPEG, "-y", "-f", "lavfi", "-i",
                        f"color=c=0x1b1f2a:s={width}x{height}:r={fps}:d={duration}"]
@@ -156,7 +179,7 @@ def render_json_video(cfg, voice_path, segments, log, progress):
             mux_cmd = [FFMPEG, "-y", "-i", joined, "-stream_loop", "-1",
                        "-i", background_music, "-map", "0:v:0", "-map", "1:a:0",
                        "-t", str(voice_duration), "-c:v", "copy", "-af", audio_filter,
-                       "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", output]
+                       "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart", output]
             log(f"  adding background sound at {music_level:.0%} volume")
         elif cfg.get("mute_audio"):
             mux_cmd = [FFMPEG, "-y", "-i", joined, "-map", "0:v:0", "-t", str(voice_duration),
@@ -164,7 +187,7 @@ def render_json_video(cfg, voice_path, segments, log, progress):
         else:
             mux_cmd = [FFMPEG, "-y", "-i", joined, "-i", voice_path,
                        "-map", "0:v:0", "-map", "1:a:0", "-t", str(voice_duration),
-                       "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                       "-c:v", "copy", "-c:a", "aac", "-b:a", "256k",
                        "-movflags", "+faststart", output]
         mux = subprocess.run(mux_cmd, capture_output=True, text=True)
         if mux.returncode != 0:
@@ -223,7 +246,7 @@ def _make_story_card(width, height, fps, duration, story_number, author, output,
             command += ["-af", "volume=0.42,afade=t=in:st=0:d=0.5,afade=t=out:st=" +
                         str(max(0.0, duration - 0.8)) + ":d=0.8"]
         command += ["-c:v", "libx264", "-preset", "fast", "-crf", "12",
-                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "256k",
                     "-shortest", output]
         result = subprocess.run(
             command,
@@ -249,7 +272,7 @@ def _ensure_video_audio(source, output, duration):
     result = subprocess.run(
         [FFMPEG, "-y", "-i", source, "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
          "-t", str(duration), "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
-         "-c:a", "aac", "-b:a", "192k", "-shortest", output],
+         "-c:a", "aac", "-b:a", "256k", "-shortest", output],
         capture_output=True, text=True)
     return output if result.returncode == 0 else None
 
@@ -333,7 +356,15 @@ def run_make_multi_story_video(cfg, json_paths, authors, log, progress):
         json_paths, authors, expansion_work, log)
     if len(json_paths) < 2:
         try:
-            single_cfg = dict(cfg); single_cfg["json"] = json_paths[0]
+            single_cfg = dict(cfg)
+            single_cfg["json"] = json_paths[0]
+            # An embedded story lives in expansion_work, which is deleted in
+            # the finally block below. Keep the delivered MP4 beside the
+            # originally selected JSON (or at the user's explicit path).
+            single_cfg["video_out"] = os.path.abspath(
+                cfg.get("video_out") or
+                (os.path.splitext(selected_script)[0] + "_video.mp4")
+            )
             return run_make_video(single_cfg, log, progress)
         finally:
             shutil.rmtree(expansion_work, ignore_errors=True)
@@ -403,7 +434,7 @@ def run_make_multi_story_video(cfg, json_paths, authors, log, progress):
             [FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", manifest,
              "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy",
              "-af", "aresample=async=1:first_pts=0", "-c:a", "aac",
-             "-b:a", "192k", "-ar", "48000", "-ac", "2",
+             "-b:a", "256k", "-ar", "48000", "-ac", "2",
              "-t", f"{expected_video_duration:.3f}",
              "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", final_output],
             capture_output=True, text=True)
