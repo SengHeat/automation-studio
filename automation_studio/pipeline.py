@@ -15,6 +15,29 @@ from .video import render_json_video
 from .voice import generate_voice
 
 
+def _flatten_segments(data):
+    """Return a normalized flat segment list from either a simple or compilation JSON."""
+    if data.get("segments"):
+        return data["segments"]
+    stories = data.get("stories", [])
+    if not stories:
+        return []
+    project = data.get("project", {}) if isinstance(data.get("project"), dict) else {}
+    narration_note = project.get("narration_notes", "Slow, restrained horror narration.")
+    flat = []
+    global_id = 1
+    for story in stories:
+        for seg in story.get("segments", []):
+            segment = dict(seg)
+            segment["segment_id"] = global_id
+            segment.setdefault("target_text", segment.get("narration", ""))
+            segment.setdefault("title", f"seg{global_id}")
+            segment.setdefault("control_instruction", narration_note)
+            flat.append(segment)
+            global_id += 1
+    return flat
+
+
 def _make_voice(cfg, segments, log):
     if cfg["voice_source"] == "existing":
         v = cfg["voice_file"]
@@ -42,8 +65,26 @@ def _make_voice(cfg, segments, log):
         }
         max_workers = int(cfg.get("max_workers", 2))
 
+        voice_ref = cfg.get("voice_ref", "")
+        if voice_ref and os.path.exists(voice_ref):
+            clean_ref = os.path.join(tmp, "reference_clean.wav")
+            cleaned = subprocess.run(
+                [FFMPEG, "-y", "-i", voice_ref,
+                 "-af", "highpass=f=80,lowpass=f=10000,afftdn=nr=40:nf=-38:tn=1:gs=12",
+                 "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", clean_ref],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=90,
+            )
+            if (cleaned.returncode == 0 and os.path.exists(clean_ref)
+                    and os.path.getsize(clean_ref) > 1500):
+                voice_ref = clean_ref
+                log("  🧹 Cleaned reference voice before VoxCPM cloning")
+            else:
+                log("  ⚠️ Reference cleanup failed; using the original reference")
+
         log("STEP 1  generating voice (parallel)...")
-        if not generate_voice(segments, cfg.get("voice_ref", ""), tmp, log, voice_cfg, max_workers):
+        if not generate_voice(segments, voice_ref, tmp, log, voice_cfg, max_workers):
             log("⚠️ Voice generation had issues, but continuing...")
 
         log("STEP 2  merging voice + pauses + music...")
@@ -68,7 +109,7 @@ def run_voice_only(cfg, log, progress):
     if not FFMPEG or not FFPROBE:
         log("❌ ffmpeg not found."); return
     data = json.load(open(cfg["json"], encoding="utf-8"))
-    segments = data.get("segments", [])
+    segments = _flatten_segments(data)
     voice = _make_voice(cfg, segments, log)
     if voice:
         log(f"\n✅ VOICE READY → {voice}")

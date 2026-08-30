@@ -7,9 +7,10 @@ import threading
 import time
 import traceback
 
-from .config import (DEFAULT_STORY_CARD_DURATION, DEFAULT_VOICE_REF,
-                     STORY_CARD_BG, VOICE_PRESETS, VOICE_STYLES)
-from .pipeline import _make_voice, run_make_video, run_voice_only
+from .config import (APP_DEBUG, DEBUG_STORY_JSON, DEFAULT_STORY_CARD_DURATION,
+                     DEFAULT_VOICE_REF, STORY_CARD_BG, VOICE_PRESETS,
+                     VOICE_STYLES)
+from .pipeline import _flatten_segments, _make_voice, run_make_video, run_voice_only
 from .video import run_make_multi_story_video
 
 
@@ -46,7 +47,7 @@ def _gradio_run_voice(json_path, voice_source, voice_preset, voice_style, voice_
                 "segments_output": segment_dir,
             }
             data = json.load(open(story_path, encoding="utf-8"))
-            result["path"] = _make_voice(cfg, data.get("segments", []), ui_log)
+            result["path"] = _make_voice(cfg, _flatten_segments(data), ui_log)
             if result["path"]:
                 ui_log(f"\n✅ VOICE READY → {result['path']}")
         except Exception:
@@ -146,8 +147,18 @@ def build_gradio_ui():
         with gr.Row():
             with gr.Column(scale=2):
                 gr.Markdown("### 📖 Story")
-                story_json = gr.File(label="Story JSON files (upload in Story 1, 2, 3 order)",
-                                     file_types=[".json"], type="filepath", file_count="multiple")
+                debug_story = (
+                    [DEBUG_STORY_JSON]
+                    if APP_DEBUG and DEBUG_STORY_JSON and os.path.isfile(DEBUG_STORY_JSON)
+                    else None
+                )
+                story_json = gr.File(
+                    value=debug_story,
+                    label="Story JSON files (upload in Story 1, 2, 3 order)",
+                    file_types=[".json"],
+                    type="filepath",
+                    file_count="multiple",
+                )
                 story_authors = gr.Textbox(
                     value="Anonymous", label="Authors in order (comma-separated)",
                     placeholder="Anonymous, Ranger P., John")

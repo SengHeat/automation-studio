@@ -247,6 +247,7 @@ def _make_story_card(width, height, fps, duration, story_number, author, output,
                         str(max(0.0, duration - 0.8)) + ":d=0.8"]
         command += ["-c:v", "libx264", "-preset", "fast", "-crf", "12",
                     "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "256k",
+                    "-ar", "48000", "-ac", "2",
                     "-shortest", output]
         result = subprocess.run(
             command,
@@ -263,17 +264,31 @@ def _make_story_card(width, height, fps, duration, story_number, author, output,
 
 
 def _ensure_video_audio(source, output, duration):
+    """Normalize every concat piece to AAC 48 kHz stereo.
+
+    The concat demuxer requires matching stream parameters. Copying mono story
+    audio beside stereo story-card audio can otherwise produce audible crackle.
+    """
     probe = subprocess.run(
         [FFPROBE, "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
          "-of", "csv=p=0", source], capture_output=True, text=True)
     if probe.stdout.strip():
-        shutil.copy2(source, output)
-        return output
-    result = subprocess.run(
-        [FFMPEG, "-y", "-i", source, "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
-         "-t", str(duration), "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
-         "-c:a", "aac", "-b:a", "256k", "-shortest", output],
-        capture_output=True, text=True)
+        command = [
+            FFMPEG, "-y", "-i", source, "-t", str(duration),
+            "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy",
+            "-af", "aresample=48000:async=1:first_pts=0",
+            "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-ac", "2",
+            "-shortest", output,
+        ]
+    else:
+        command = [
+            FFMPEG, "-y", "-i", source, "-f", "lavfi",
+            "-i", "anullsrc=r=48000:cl=stereo", "-t", str(duration),
+            "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+            "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-ac", "2",
+            "-shortest", output,
+        ]
+    result = subprocess.run(command, capture_output=True, text=True)
     return output if result.returncode == 0 else None
 
 

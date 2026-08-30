@@ -1,6 +1,29 @@
 """Application configuration, executable discovery, and voice presets."""
 
+import os
 import shutil
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_env_file(path=PROJECT_ROOT / ".env"):
+    """Load simple KEY=VALUE entries without overriding shell environment."""
+    if not path.is_file():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip()
+        if value[:1] == value[-1:] and value[:1] in ('"', "'"):
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+_load_env_file()
 
 
 FFMPEG  = shutil.which("ffmpeg")
@@ -9,13 +32,19 @@ FFMPEG  = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
 
 
-PEXELS_KEY = "kqyiphoOwFOqKzdi8kGKKeDOjw0xJa1ou7ubp0d1Sdhc0UOEbNpe9ZgS"
+PEXELS_KEY = os.getenv("PEXELS_KEY", "")
 
 
-STORY_CARD_BG = "/Users/macbook/DRSB-Workplace/NightFallFiles/story_card_bg.MP3"
+STORY_CARD_BG = os.getenv("STORY_CARD_BG", "")
 
 
-DEFAULT_VOICE_REF = "/Users/macbook/DRSB-Workplace/NightFallFiles/ref_wd.MP3"
+DEFAULT_VOICE_REF = os.getenv("DEFAULT_VOICE_REF", "")
+
+
+APP_DEBUG = os.getenv("APP_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+DEBUG_STORY_JSON = os.getenv("DEBUG_STORY_JSON", "")
 
 
 DEFAULT_STORY_CARD_DURATION = 5.0
