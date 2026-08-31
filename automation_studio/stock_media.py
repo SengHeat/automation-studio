@@ -9,7 +9,7 @@ import subprocess
 import urllib.parse
 import urllib.request
 
-from .config import FFMPEG, FFPROBE, PEXELS_KEY
+from .config import FFMPEG, FFPROBE, PEXELS_KEY, PIXABAY_KEY
 from .audio import audio_dur
 
 
@@ -95,6 +95,88 @@ def _pexels_photo_url(query, api_key, per_page=8, choice_index=0):
         if link:
             candidates.append(link)
     return candidates[choice_index % len(candidates)] if candidates else ""
+
+
+def _pixabay_audio_url(query, api_key, choice_index=0):
+    """Return a direct MP3 URL from Pixabay music search."""
+    url = ("https://pixabay.com/api/audio/?key=" + urllib.parse.quote(api_key) +
+           "&q=" + urllib.parse.quote(query) + "&media_type=music&per_page=10")
+    request = urllib.request.Request(url, headers={"User-Agent": "jruy-video-studio/1.0"})
+    with urllib.request.urlopen(request, timeout=30, context=_https_context()) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    links = []
+    for track in payload.get("hits", []):
+        link = track.get("audio") or track.get("previewURL", "")
+        if link:
+            links.append(link)
+    return links[choice_index % len(links)] if links else ""
+
+
+def _ccmixter_audio_url(query, choice_index=0):
+    """Return a direct MP3 URL from ccMixter (no API key required, CC-licensed)."""
+    url = ("http://ccmixter.org/api/query?tags=" + urllib.parse.quote(query) +
+           "&limit=10&format=json&lic=open")
+    request = urllib.request.Request(url, headers={"User-Agent": "jruy-video-studio/1.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return ""
+    candidates = []
+    for work in payload:
+        for file_entry in work.get("files", []):
+            fmt = file_entry.get("file_format_info") or {}
+            file_url = fmt.get("file_url") or file_entry.get("download_url", "")
+            file_type = fmt.get("file_format", "").lower()
+            if file_url and ("mp3" in file_type or file_url.lower().endswith(".mp3")):
+                candidates.append(file_url)
+                break
+    return candidates[choice_index % len(candidates)] if candidates else ""
+
+
+def download_stock_audio(query, destination_folder, log, api_key=PIXABAY_KEY, choice_index=0):
+    """Download a background music track for *query* and return its local path.
+
+    Priority: Pixabay (if api_key set) → ccMixter fallback → "" on failure.
+    Caches to <destination_folder>/bgaudio_<slug>_pick<N>.mp3.
+    """
+    if not query or not query.strip():
+        return ""
+    os.makedirs(destination_folder, exist_ok=True)
+    slug = _stock_slug(query)[:60]
+    filename = f"bgaudio_{slug}_pick{choice_index % 8}.mp3"
+    destination = os.path.abspath(os.path.join(destination_folder, filename))
+
+    if os.path.exists(destination) and os.path.getsize(destination) > 10000:
+        log(f"  stock audio: using cached {filename}")
+        return destination
+
+    link = ""
+    if api_key:
+        try:
+            log(f"  stock audio: searching Pixabay for '{query}'...")
+            link = _pixabay_audio_url(query, api_key, choice_index=choice_index)
+        except Exception as exc:
+            log(f"  stock audio: Pixabay search failed ({str(exc)[:80]}), trying ccMixter...")
+
+    if not link:
+        try:
+            log(f"  stock audio: searching ccMixter for '{query}'...")
+            link = _ccmixter_audio_url(query, choice_index=choice_index)
+        except Exception as exc:
+            log(f"  stock audio: ccMixter search failed: {str(exc)[:80]}")
+
+    if not link:
+        log(f"  stock audio: no result found for '{query}'")
+        return ""
+
+    try:
+        _download_stock_video(link, destination)
+        log(f"  stock audio: downloaded {filename}")
+        return destination
+    except Exception as exc:
+        log(f"  stock audio: download failed: {str(exc)[:120]}")
+        return ""
 
 
 def _media_duration(path):

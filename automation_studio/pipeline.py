@@ -10,7 +10,8 @@ import tempfile
 from .audio import merge_voice, normalize_audio_lufs
 from .config import FFMPEG, FFPROBE, PEXELS_KEY
 from .stock_media import (_segment_time_range, _story_video_duration,
-                          download_missing_stock, replace_short_videos_with_images)
+                          download_missing_stock, replace_short_videos_with_images,
+                          download_stock_audio)
 from .video import render_json_video
 from .voice import generate_voice
 
@@ -36,6 +37,22 @@ def _flatten_segments(data):
             flat.append(segment)
             global_id += 1
     return flat
+
+
+def _resolve_bg_music(cfg, clips_folder, log):
+    """Return the final bg_music path: uploaded file > stock query > empty string."""
+    uploaded = (cfg.get("bg_music") or "").strip()
+    if uploaded and os.path.exists(uploaded):
+        log(f"  Using uploaded background music: {os.path.basename(uploaded)}")
+        return uploaded
+    query = (cfg.get("bg_sound_query") or "").strip()
+    if query:
+        audio_cache = os.path.join(clips_folder, "_bg_audio_cache")
+        downloaded = download_stock_audio(query, audio_cache, log)
+        if downloaded:
+            return downloaded
+        log("  stock audio download failed; continuing without background music.")
+    return ""
 
 
 def _make_voice(cfg, segments, log):
@@ -93,7 +110,11 @@ def _make_voice(cfg, segments, log):
         if segments_output:
             log(f"  📁 Individual segments will be saved to: {segments_output}")
 
-        result = merge_voice(tmp, segments, out_voice, cfg["bg_music"], cfg["bg_percent"], log,
+        _voice_clips_folder = cfg.get("clips_folder") or (
+            os.path.splitext(os.path.abspath(cfg.get("json") or "voice.mp3"))[0] + "_stock_clips"
+            if cfg.get("json") else os.path.join(tmp, "_bg_audio_cache"))
+        effective_bg = _resolve_bg_music(cfg, _voice_clips_folder, log)
+        result = merge_voice(tmp, segments, out_voice, effective_bg, cfg["bg_percent"], log,
                              auto_amb=cfg.get("auto_amb", False),
                              save_segments_to=segments_output)
         if not result:
@@ -163,6 +184,7 @@ def run_make_video(cfg, log, progress):
 
     clips_folder = cfg.get("clips_folder") or (
             os.path.splitext(os.path.abspath(cfg["json"]))[0] + "_stock_clips")
+    cfg["bg_music"] = _resolve_bg_music(cfg, clips_folder, log)
     missing = 0
     json_base = os.path.dirname(os.path.abspath(cfg["json"]))
     for segment in segments:
