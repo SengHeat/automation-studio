@@ -48,7 +48,8 @@ def _gradio_run_voice(json_path, voice_source, voice_preset, voice_style, voice_
                 "auto_amb": bool(auto_amb), "voice_out": output,
                 "segments_output": segment_dir,
             }
-            data = json.load(open(story_path, encoding="utf-8"))
+            with open(story_path, encoding="utf-8") as f:
+                data = json.load(f)
             result["path"] = _make_voice(cfg, _flatten_segments(data), ui_log)
             if result["path"]:
                 ui_log(f"\n✅ VOICE READY → {result['path']}")
@@ -627,7 +628,7 @@ def build_gradio_ui():
                     inputs=[hist_file_dd],
                     outputs=[hist_meta, hist_preview, hist_selected_state])
                 hist_send_btn.click(
-                    lambda p: [p] if p else None,
+                    lambda p: [p] if p else [],
                     inputs=[hist_selected_state],
                     outputs=[story_json])
                 hist_delete_btn.click(

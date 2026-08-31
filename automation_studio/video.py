@@ -137,7 +137,8 @@ def _build_subtitle_filter(segments, timeline_path, font_size=28, position="bott
     if not timeline_path or not os.path.exists(timeline_path):
         return ""
     try:
-        timeline = json.load(open(timeline_path, encoding="utf-8"))
+        with open(timeline_path, encoding="utf-8") as _f:
+            timeline = json.load(_f)
     except Exception:
         return ""
     if not timeline:
@@ -478,7 +479,8 @@ def expand_compilation_json(json_paths, supplied_authors, output_folder, log):
     """Expand JSON files containing a top-level stories[] compilation."""
     expanded, authors = [], []
     for source_path in json_paths:
-        data = json.load(open(source_path, encoding="utf-8"))
+        with open(source_path, encoding="utf-8") as _f:
+            data = json.load(_f)
         embedded = data.get("stories") if isinstance(data, dict) else None
         if not isinstance(embedded, list) or not embedded:
             expanded.append(source_path)

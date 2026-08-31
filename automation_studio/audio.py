@@ -308,7 +308,8 @@ def merge_voice(clips_folder, segments, out_voice, bg_music, bg_percent, log,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     os.unlink(tmp.name)
 
-    json.dump(timeline, open(out_voice + ".timeline.json", "w"))
+    with open(out_voice + ".timeline.json", "w", encoding="utf-8") as f:
+        json.dump(timeline, f)
 
     if save_segments_to:
         summary_path = os.path.join(save_segments_to, "segments_summary.txt")

@@ -324,7 +324,8 @@ def _video_windows(voice_path, segments):
     timeline_path = voice_path + ".timeline.json"
     if os.path.exists(timeline_path):
         try:
-            timeline = json.load(open(timeline_path, encoding="utf-8"))
+            with open(timeline_path, encoding="utf-8") as _f:
+                timeline = json.load(_f)
             if len(timeline) == len(segments) and timeline:
                 source_duration = timeline[-1]["end_ms"] / 1000.0
                 scale = duration / source_duration if source_duration else 1.0

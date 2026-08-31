@@ -130,7 +130,8 @@ def _make_voice(cfg, segments, log):
 def run_voice_only(cfg, log, progress):
     if not FFMPEG or not FFPROBE:
         log("❌ ffmpeg not found."); return
-    data = json.load(open(cfg["json"], encoding="utf-8"))
+    with open(cfg["json"], encoding="utf-8") as f:
+        data = json.load(f)
     segments = _flatten_segments(data)
     voice = _make_voice(cfg, segments, log)
     if voice:
@@ -142,8 +143,9 @@ def run_make_video(cfg, log, progress):
     if not FFMPEG or not FFPROBE:
         log("❌ ffmpeg/ffprobe not found.")
         return None
-    data = json.load(open(cfg["json"], encoding="utf-8"))
-    segments = data.get("segments", [])
+    with open(cfg["json"], encoding="utf-8") as f:
+        data = json.load(f)
+    segments = _flatten_segments(data)
     if not segments:
         log("❌ Story JSON has no segments.")
         return None
@@ -216,7 +218,10 @@ def run_make_video(cfg, log, progress):
     if image_fallbacks:
         log(f"  short-video fallback: {image_fallbacks} segment(s) changed to slow-zoom images")
 
-    width, height = (int(v) for v in cfg.get("resolution", "1280x720").split("x"))
+    try:
+        width, height = (int(v) for v in cfg.get("resolution", "1280x720").split("x"))
+    except (ValueError, TypeError):
+        width, height = 1280, 720
     output = os.path.abspath(cfg.get("video_out") or
                              (os.path.splitext(cfg["json"])[0] + ".mp4"))
     os.makedirs(os.path.dirname(output), exist_ok=True)
