@@ -188,6 +188,76 @@ def _gradio_generate_story(title, premise, genre, duration_minutes,
     yield "\n".join(messages), result["preview"], result["path"]
 
 
+def _hist_scan(folder):
+    """Scan a folder recursively for story JSON files and return dropdown choices."""
+    import gradio as gr
+    folder = (folder or ".").strip()
+    if not os.path.isdir(folder):
+        return gr.update(choices=[], value=None), "❌ Folder not found."
+    choices = []
+    for root, _dirs, files in os.walk(folder):
+        for fname in sorted(files):
+            if not fname.lower().endswith(".json"):
+                continue
+            fpath = os.path.join(root, fname)
+            try:
+                with open(fpath, encoding="utf-8") as f:
+                    data = json.load(f)
+                if "segments" not in data and "stories" not in data:
+                    continue
+                title = data.get("title") or fname
+                label = f"{title}  [{fname}]"
+                choices.append((label, fpath))
+            except Exception:
+                pass
+    return gr.update(choices=choices, value=None), f"✅ Found {len(choices)} story file(s)."
+
+
+def _hist_preview(fpath):
+    """Load a story JSON and return metadata summary, JSON preview, and the path."""
+    if not fpath or not os.path.exists(fpath):
+        return "", "", ""
+    try:
+        with open(fpath, encoding="utf-8") as f:
+            data = json.load(f)
+        segs = list(data.get("segments") or [])
+        for story in data.get("stories") or []:
+            segs.extend(story.get("segments") or [])
+        title = data.get("title", "—")
+        lang = data.get("language", "—")
+        # Estimate duration from last segment end time
+        max_end = 0.0
+        for seg in segs:
+            dur = str(seg.get("duration") or "")
+            if "-" in dur:
+                try:
+                    end = dur.split("-")[-1].strip()
+                    parts = end.split(":")
+                    if len(parts) == 2:
+                        max_end = max(max_end, int(parts[0]) + int(parts[1]) / 60)
+                except Exception:
+                    pass
+        dur_str = f"{max_end:.1f} min" if max_end > 0 else "—"
+        meta = (f"📄 {os.path.basename(fpath)}\n"
+                f"🎬 {title}\n"
+                f"📝 {len(segs)} segment(s) · {lang} · {dur_str}")
+        preview = json.dumps(data, indent=2, ensure_ascii=False)
+        return meta, preview, fpath
+    except Exception as e:
+        return f"❌ {e}", "", ""
+
+
+def _hist_delete_file(fpath):
+    """Delete the selected story JSON file."""
+    if not fpath or not os.path.exists(fpath):
+        return "❌ No file selected or file not found."
+    try:
+        os.remove(fpath)
+        return f"✅ Deleted: {os.path.basename(fpath)}"
+    except Exception as e:
+        return f"❌ Delete failed: {e}"
+
+
 def build_gradio_ui():
     """Automation-Studio-style web UI for voice and video generation."""
     import gradio as gr
@@ -392,6 +462,49 @@ def build_gradio_ui():
                                          enable_subtitles, subtitle_size, subtitle_position,
                                          make_thumbnail]
                 video_btn.click(_gradio_run_video, inputs=video_inputs, outputs=[run_log, output_video])
+
+            # ── Tab 3: History & Manager ───────────────────────────────
+            with gr.Tab("📂 History"):
+                gr.Markdown("### Browse and manage saved Story JSON files")
+                with gr.Row():
+                    hist_folder = gr.Textbox(
+                        value=".", label="Folder to scan",
+                        placeholder="./stories", scale=5)
+                    hist_scan_btn = gr.Button("🔍 Scan", size="sm", scale=1)
+                hist_status = gr.Textbox(label="Status", interactive=False, lines=1)
+                hist_file_dd = gr.Dropdown(
+                    choices=[], label="Select Story JSON", interactive=True)
+                hist_meta = gr.Textbox(
+                    label="Metadata", interactive=False, lines=3)
+                hist_preview = gr.Code(
+                    label="JSON Preview", language="json",
+                    lines=15, interactive=False)
+                hist_selected_state = gr.State(value="")
+                with gr.Row():
+                    hist_send_btn = gr.Button(
+                        "📤 Send to Studio", variant="primary", size="sm")
+                    hist_delete_btn = gr.Button(
+                        "🗑 Delete", variant="stop", size="sm")
+
+                hist_scan_btn.click(
+                    _hist_scan,
+                    inputs=[hist_folder],
+                    outputs=[hist_file_dd, hist_status])
+                hist_file_dd.change(
+                    _hist_preview,
+                    inputs=[hist_file_dd],
+                    outputs=[hist_meta, hist_preview, hist_selected_state])
+                hist_send_btn.click(
+                    lambda p: [p] if p else None,
+                    inputs=[hist_selected_state],
+                    outputs=[story_json])
+                hist_delete_btn.click(
+                    _hist_delete_file,
+                    inputs=[hist_selected_state],
+                    outputs=[hist_status]).then(
+                    _hist_scan,
+                    inputs=[hist_folder],
+                    outputs=[hist_file_dd, hist_status])
 
     return demo, css
 
