@@ -9,6 +9,7 @@ import tempfile
 
 from .audio import merge_voice, normalize_audio_lufs
 from .config import FFMPEG, FFPROBE, PEXELS_KEY
+from .image_generator import generate_ai_images
 from .stock_media import (_segment_time_range, _story_video_duration,
                           download_missing_stock, replace_short_videos_with_images,
                           download_stock_audio)
@@ -193,9 +194,23 @@ def run_make_video(cfg, log, progress):
         if not media or not os.path.exists(resolved):
             missing += 1
     if missing:
-        log(f"STEP 3  downloading stock video for {missing} missing segments...")
-        count = download_missing_stock(cfg["json"], segments, clips_folder, log)
-        log(f"  stock download complete: {count} new clips saved in {clips_folder}")
+        if cfg.get("use_ai_images"):
+            log(f"STEP 3  generating AI images (DALL-E 3) for {missing} missing segments...")
+            count = generate_ai_images(cfg["json"], segments, clips_folder, log,
+                                       max_workers=int(cfg.get("max_workers", 2)))
+            log(f"  AI image generation complete: {count} image(s) saved in {clips_folder}")
+            # Fall back to Pexels for any still-missing segments
+            still_missing = sum(
+                1 for seg in segments
+                if not next((str(p) for p in (seg.get("image_or_video") or []) if p), ""))
+            if still_missing:
+                log(f"  {still_missing} segment(s) still missing — downloading from Pexels...")
+                count2 = download_missing_stock(cfg["json"], segments, clips_folder, log)
+                log(f"  Pexels fallback: {count2} clip(s) downloaded")
+        else:
+            log(f"STEP 3  downloading stock video for {missing} missing segments...")
+            count = download_missing_stock(cfg["json"], segments, clips_folder, log)
+            log(f"  stock download complete: {count} new clips saved in {clips_folder}")
     image_fallbacks = replace_short_videos_with_images(
         cfg["json"], segments, clips_folder, log)
     if image_fallbacks:
@@ -217,7 +232,8 @@ def run_make_video(cfg, log, progress):
                   "enable_subtitles": bool(cfg.get("enable_subtitles", False)),
                   "subtitle_size": int(cfg.get("subtitle_size", 28)),
                   "subtitle_position": cfg.get("subtitle_position", "bottom"),
-                  "make_thumbnail": bool(cfg.get("make_thumbnail", False))}
+                  "make_thumbnail": bool(cfg.get("make_thumbnail", False)),
+                  "use_ai_images": bool(cfg.get("use_ai_images", False))}
     log("STEP 4  rendering video with jruy.py built-in engine...")
     try:
         render_json_video(render_cfg, voice, segments, log, progress)

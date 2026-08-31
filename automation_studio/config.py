@@ -41,6 +41,9 @@ PIXABAY_KEY = os.getenv("PIXABAY_KEY", "")
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_KEY", "")
 
 
+OPENAI_KEY = os.getenv("OPENAI_KEY", "")
+
+
 STORY_CARD_BG = os.getenv("STORY_CARD_BG", "")
 
 

@@ -77,7 +77,7 @@ def _gradio_run_video(json_path, voice_source, voice_preset, voice_style, voice_
                       video_out,
                       resolution, fps, crf, transition_duration, effect_style,
                       enable_subtitles, subtitle_size, subtitle_position,
-                      make_thumbnail=True):
+                      make_thumbnail=True, use_ai_images=False):
     """Stream the voice + built-in video-rendering pipeline to Gradio."""
     messages, updates = [], queue.Queue()
     finished = threading.Event()
@@ -114,6 +114,7 @@ def _gradio_run_video(json_path, voice_source, voice_preset, voice_style, voice_
                 "subtitle_size": int(subtitle_size),
                 "subtitle_position": subtitle_position or "bottom",
                 "make_thumbnail": bool(make_thumbnail),
+                "use_ai_images": bool(use_ai_images),
                 "preview": False,
                 "show_title": False, "channel": "",
                 "logo": "", "use_logo": False,
@@ -427,6 +428,9 @@ def build_gradio_ui():
                                 make_thumbnail = gr.Checkbox(
                                     value=True, label="Generate thumbnail beside video",
                                     info="Saves a cinematic thumbnail JPG with title text.")
+                                use_ai_images = gr.Checkbox(
+                                    value=False, label="Generate AI images with DALL-E 3",
+                                    info="Requires OPENAI_KEY in .env. Generates a unique cinematic image per segment instead of downloading from Pexels. Falls back to Pexels for any failures.")
 
                             with gr.Tab("💬 Subtitles"):
                                 enable_subtitles = gr.Checkbox(
@@ -460,7 +464,7 @@ def build_gradio_ui():
                                          video_out,
                                          resolution, fps, crf, transition_duration, effect_style,
                                          enable_subtitles, subtitle_size, subtitle_position,
-                                         make_thumbnail]
+                                         make_thumbnail, use_ai_images]
                 video_btn.click(_gradio_run_video, inputs=video_inputs, outputs=[run_log, output_video])
 
             # ── Tab 3: History & Manager ───────────────────────────────
