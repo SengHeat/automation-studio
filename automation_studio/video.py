@@ -15,6 +15,119 @@ from .stock_media import (VIDEO_EXT, _media_duration, _segment_time_range,
                           _video_windows)
 
 
+def _make_thumbnail(output_video_path, segments, title, width, height, log):
+    """Generate a cinematic thumbnail JPG beside the output video.
+
+    Extracts a frame from the first segment's media, applies a dark color
+    grade via PIL, and overlays the story title in large white text.
+    Saves as <output_video_path without .mp4>_thumbnail.jpg.
+    """
+    from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+
+    thumb_path = os.path.splitext(output_video_path)[0] + "_thumbnail.jpg"
+    font_paths = [
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+
+    def _font(size):
+        for p in font_paths:
+            if os.path.exists(p):
+                try:
+                    return ImageFont.truetype(p, size)
+                except OSError:
+                    pass
+        return ImageFont.load_default()
+
+    # Find first segment media
+    source_frame = None
+    for seg in segments:
+        media_list = seg.get("image_or_video") or []
+        media = next((str(m) for m in media_list if m and os.path.exists(str(m))), "")
+        if media:
+            try:
+                tmp_frame = thumb_path + ".frame.jpg"
+                if media.lower().endswith(VIDEO_EXT):
+                    result = subprocess.run(
+                        [FFMPEG, "-y", "-ss", "2", "-i", media,
+                         "-frames:v", "1", "-q:v", "2", tmp_frame],
+                        capture_output=True, timeout=30)
+                    if result.returncode == 0 and os.path.exists(tmp_frame):
+                        source_frame = tmp_frame
+                else:
+                    source_frame = media
+            except Exception:
+                pass
+            if source_frame:
+                break
+
+    # Build base image
+    if source_frame and os.path.exists(source_frame):
+        try:
+            img = Image.open(source_frame).convert("RGB")
+            img = img.resize((width, height), Image.LANCZOS)
+        except Exception:
+            img = Image.new("RGB", (width, height), (5, 6, 9))
+    else:
+        img = Image.new("RGB", (width, height), (5, 6, 9))
+
+    # Dark cinematic grade: reduce brightness, desaturate slightly
+    img = ImageEnhance.Brightness(img).enhance(0.45)
+    img = ImageEnhance.Color(img).enhance(0.7)
+    img = ImageEnhance.Contrast(img).enhance(1.2)
+
+    # Dark gradient overlay on bottom third
+    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw_ov = ImageDraw.Draw(overlay)
+    gradient_top = height * 2 // 3
+    for y in range(gradient_top, height):
+        alpha = int(210 * (y - gradient_top) / (height - gradient_top))
+        draw_ov.line([(0, y), (width, y)], fill=(0, 0, 0, alpha))
+    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+
+    # Draw title text
+    draw = ImageDraw.Draw(img)
+    clean_title = (title or "Untitled").upper()
+    font_size = max(32, int(height * 0.09))
+    title_font = _font(font_size)
+    sub_font = _font(max(18, int(height * 0.04)))
+
+    title_box = draw.textbbox((0, 0), clean_title, font=title_font)
+    tw = title_box[2] - title_box[0]
+    tx = max(40, (width - tw) // 2)
+    ty = height - int(height * 0.22)
+
+    # Shadow
+    draw.text((tx + 3, ty + 3), clean_title, font=title_font, fill=(0, 0, 0, 180))
+    # Main text
+    draw.text((tx, ty), clean_title, font=title_font, fill=(240, 235, 220))
+
+    # Thin red accent line above title
+    draw.rectangle([(tx, ty - 14), (tx + min(tw, width - 80), ty - 10)],
+                   fill=(160, 20, 20))
+
+    # Subtitle "A Horror Story"
+    genre_text = "A Cinematic Horror Story"
+    sub_box = draw.textbbox((0, 0), genre_text, font=sub_font)
+    sw = sub_box[2] - sub_box[0]
+    draw.text(((width - sw) // 2, ty + font_size + 10), genre_text,
+              font=sub_font, fill=(180, 170, 160))
+
+    img.save(thumb_path, "JPEG", quality=92)
+
+    # Clean temp frame
+    if source_frame and source_frame.endswith(".frame.jpg"):
+        try:
+            os.unlink(source_frame)
+        except OSError:
+            pass
+
+    log(f"  thumbnail saved → {os.path.basename(thumb_path)}")
+    return thumb_path
+
+
 def _build_subtitle_filter(segments, timeline_path, font_size=28, position="bottom"):
     """Build a comma-chained FFmpeg drawtext filter string from timeline.json.
 
@@ -258,6 +371,11 @@ def render_json_video(cfg, voice_path, segments, log, progress):
             log("❌ Final audio/video merge failed:\n" + "\n".join(mux.stderr.splitlines()[-6:]))
             return None
         progress(100)
+        if cfg.get("make_thumbnail", False):
+            try:
+                _make_thumbnail(output, segments, cfg.get("title", ""), width, height, log)
+            except Exception as exc:
+                log(f"  ⚠️ thumbnail generation failed: {exc}")
         return output
     finally:
         shutil.rmtree(work, ignore_errors=True)

@@ -216,7 +216,8 @@ def run_make_video(cfg, log, progress):
                   "bg_percent": float(cfg.get("bg_percent", 0.18)), "json": cfg["json"],
                   "enable_subtitles": bool(cfg.get("enable_subtitles", False)),
                   "subtitle_size": int(cfg.get("subtitle_size", 28)),
-                  "subtitle_position": cfg.get("subtitle_position", "bottom")}
+                  "subtitle_position": cfg.get("subtitle_position", "bottom"),
+                  "make_thumbnail": bool(cfg.get("make_thumbnail", False))}
     log("STEP 4  rendering video with jruy.py built-in engine...")
     try:
         render_json_video(render_cfg, voice, segments, log, progress)
