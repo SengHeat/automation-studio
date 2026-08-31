@@ -190,6 +190,139 @@ def _gradio_generate_story(title, premise, genre, duration_minutes,
     yield "\n".join(messages), result["preview"], result["path"]
 
 
+def _queue_scan_folder(folder, queue_state):
+    """Scan folder for story JSONs and add them to the queue state."""
+    import gradio as gr
+    folder = (folder or ".").strip()
+    if not os.path.isdir(folder):
+        return queue_state, _queue_table_rows(queue_state), "❌ Folder not found."
+    added = 0
+    existing_paths = {j["json_path"] for j in queue_state}
+    for root, _dirs, files in os.walk(folder):
+        for fname in sorted(files):
+            if not fname.lower().endswith(".json"):
+                continue
+            fpath = os.path.join(root, fname)
+            if fpath in existing_paths:
+                continue
+            try:
+                with open(fpath, encoding="utf-8") as f:
+                    data = json.load(f)
+                if "segments" not in data and "stories" not in data:
+                    continue
+                queue_state.append({
+                    "json_path": fpath,
+                    "effect_style": "Horror Cinematic",
+                    "privacy": "private",
+                    "auto_upload": False,
+                    "status": "⏳ Queued",
+                })
+                added += 1
+            except Exception:
+                pass
+    rows = _queue_table_rows(queue_state)
+    return queue_state, rows, f"✅ Added {added} story file(s). Queue: {len(queue_state)} total."
+
+
+def _queue_table_rows(queue_state):
+    """Convert queue state to gr.Dataframe rows."""
+    return [
+        [os.path.basename(j["json_path"]), j["effect_style"],
+         j["privacy"], "Yes" if j["auto_upload"] else "No", j["status"]]
+        for j in queue_state
+    ]
+
+
+def _queue_clear(queue_state):
+    """Clear all jobs from the queue."""
+    queue_state.clear()
+    return queue_state, [], "Queue cleared."
+
+
+def _queue_run_jobs(queue_state, base_effect, base_resolution, base_fps, base_crf,
+                    base_voice_preset, base_auto_upload, queue_secrets, queue_token,
+                    queue_stop_state):
+    """Streaming generator: run all queued jobs sequentially."""
+    from .batch_queue import run_batch, STATUS_QUEUED
+
+    if not queue_state:
+        yield "❌ Queue is empty.", _queue_table_rows(queue_state), queue_stop_state
+        return
+
+    messages = []
+    updates = queue.Queue()
+    stop_event = threading.Event()
+    queue_stop_state = stop_event  # store so stop button can set it
+
+    base_cfg = {
+        "voice_source": "generate",
+        "voice_preset": base_voice_preset or "Balanced Neutral",
+        "voice_style": "Balanced",
+        "voice_ref": "", "voice_file": "",
+        "cfg_value": 1.7, "do_normalize": False,
+        "denoise": True, "auto_emotion": False,
+        "speaker_lock": True, "max_workers": 2,
+        "bg_music": "", "bg_sound_query": "",
+        "bg_percent": 0.18, "auto_amb": False,
+        "resolution": base_resolution or "1280x720",
+        "fps": int(base_fps or 20),
+        "crf": int(base_crf or 18),
+        "transition_duration": 1.5,
+        "effect_style": base_effect or "Horror Cinematic",
+        "enable_subtitles": False,
+        "subtitle_size": 28,
+        "subtitle_position": "bottom",
+        "make_thumbnail": True,
+        "use_ai_images": False,
+        "preview": False,
+        "show_title": False,
+        "channel": "", "logo": "", "use_logo": False,
+        "story_card_duration": 5.0, "story_card_bg": "",
+        "video_only": False,
+    }
+
+    # Apply auto_upload and per-job overrides
+    for job in queue_state:
+        if job["status"] == "⏳ Queued":
+            job["auto_upload"] = bool(base_auto_upload)
+            if base_effect:
+                job["effect_style"] = base_effect
+
+    def work():
+        run_batch(
+            jobs=queue_state,
+            base_cfg=base_cfg,
+            client_secrets_path=queue_secrets or "",
+            token_path=queue_token or "youtube_token.json",
+            log_queue=updates,
+            stop_event=stop_event,
+        )
+        updates.put(None)  # sentinel
+
+    threading.Thread(target=work, daemon=True).start()
+
+    while True:
+        try:
+            while True:
+                item = updates.get_nowait()
+                if item is None:
+                    yield "\n".join(messages), _queue_table_rows(queue_state), stop_event
+                    return
+                messages.append(item)
+        except queue.Empty:
+            pass
+        yield "\n".join(messages), _queue_table_rows(queue_state), stop_event
+        time.sleep(0.3)
+
+
+def _queue_stop(stop_state):
+    """Signal the running batch to stop after current job."""
+    if stop_state and hasattr(stop_state, "set"):
+        stop_state.set()
+        return "⏹ Stop requested — current job will finish, then queue halts."
+    return "⚠️ No active queue to stop."
+
+
 def _hist_scan(folder):
     """Scan a folder recursively for story JSON files and return dropdown choices."""
     import gradio as gr
@@ -394,7 +527,8 @@ def build_gradio_ui():
     css = """
     #run-log textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
     #gen-log textarea  { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
-    #yt-log textarea   { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    #yt-log textarea    { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    #queue-log textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
     .studio-title { margin-bottom: 0 !important; }
     """
     with gr.Blocks(title="Horror Voice Studio") as demo:
@@ -686,6 +820,84 @@ def build_gradio_ui():
                     inputs=[yt_video, yt_title, yt_description, yt_tags,
                             yt_privacy, yt_secrets, yt_token],
                     outputs=[yt_log, yt_video_id])
+
+            # ── Tab 5: Batch Queue Manager ─────────────────────────────
+            with gr.Tab("🚀 Queue"):
+                gr.Markdown(
+                    "### Batch Queue — overnight rendering & auto YouTube upload\n"
+                    "Scan a folder to load stories, then click **▶ Run Queue** "
+                    "to render all of them sequentially while you sleep.")
+                queue_state = gr.State([])
+                queue_stop_state = gr.State(None)
+
+                with gr.Row():
+                    queue_folder = gr.Textbox(
+                        value=".", label="Folder to scan", scale=5,
+                        placeholder="./stories")
+                    queue_scan_btn = gr.Button("🔍 Scan & Add", size="sm", scale=1)
+                    queue_clear_btn = gr.Button("🗑 Clear Queue", size="sm", scale=1)
+
+                queue_status = gr.Textbox(label="Status", interactive=False, lines=1)
+                queue_table = gr.Dataframe(
+                    headers=["File", "Effect Style", "Privacy", "Auto-Upload", "Status"],
+                    label="Job Queue",
+                    interactive=False,
+                    wrap=True)
+
+                gr.Markdown("#### ⚙️ Queue Settings")
+                with gr.Row():
+                    queue_effect = gr.Dropdown(
+                        ["Horror Cinematic", "Blood Red",
+                         "Black & White Dread", "Natural Dark"],
+                        value="Horror Cinematic", label="Effect style (all jobs)")
+                    queue_resolution = gr.Dropdown(
+                        ["1280x720", "1920x1080"], value="1280x720",
+                        label="Resolution")
+                    queue_fps = gr.Slider(12, 30, value=20, step=1, label="FPS")
+                    queue_crf = gr.Slider(18, 28, value=18, step=1, label="Quality CRF")
+                with gr.Row():
+                    queue_voice_preset = gr.Dropdown(
+                        list(VOICE_PRESETS), value="Balanced Neutral",
+                        label="Voice preset")
+                    queue_auto_upload = gr.Checkbox(
+                        value=False, label="Auto-upload to YouTube after each render")
+                with gr.Row():
+                    queue_secrets = gr.File(
+                        label="client_secrets.json (for YouTube)",
+                        file_types=[".json"], type="filepath")
+                    queue_token = gr.Textbox(
+                        value="youtube_token.json",
+                        label="YouTube token path")
+
+                with gr.Row():
+                    queue_run_btn = gr.Button(
+                        "▶ Run Queue", variant="primary", size="sm")
+                    queue_stop_btn = gr.Button(
+                        "⏹ Stop after current job", size="sm")
+
+                queue_log = gr.Textbox(
+                    label="Live log", lines=20, interactive=False,
+                    elem_id="queue-log")
+
+                queue_scan_btn.click(
+                    _queue_scan_folder,
+                    inputs=[queue_folder, queue_state],
+                    outputs=[queue_state, queue_table, queue_status])
+                queue_clear_btn.click(
+                    _queue_clear,
+                    inputs=[queue_state],
+                    outputs=[queue_state, queue_table, queue_status])
+                queue_run_btn.click(
+                    _queue_run_jobs,
+                    inputs=[queue_state, queue_effect, queue_resolution,
+                            queue_fps, queue_crf, queue_voice_preset,
+                            queue_auto_upload, queue_secrets, queue_token,
+                            queue_stop_state],
+                    outputs=[queue_log, queue_table, queue_stop_state])
+                queue_stop_btn.click(
+                    _queue_stop,
+                    inputs=[queue_stop_state],
+                    outputs=[queue_status])
 
     return demo, css
 
