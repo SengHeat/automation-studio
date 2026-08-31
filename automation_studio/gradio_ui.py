@@ -76,7 +76,8 @@ def _gradio_run_video(json_path, voice_source, voice_preset, voice_style, voice_
                       story_authors, story_card_duration, story_card_bg,
                       video_out,
                       resolution, fps, crf, transition_duration, effect_style,
-                      enable_subtitles, subtitle_size, subtitle_position):
+                      enable_subtitles, subtitle_size, subtitle_position,
+                      make_thumbnail=True):
     """Stream the voice + built-in video-rendering pipeline to Gradio."""
     messages, updates = [], queue.Queue()
     finished = threading.Event()
@@ -112,6 +113,7 @@ def _gradio_run_video(json_path, voice_source, voice_preset, voice_style, voice_
                 "enable_subtitles": bool(enable_subtitles),
                 "subtitle_size": int(subtitle_size),
                 "subtitle_position": subtitle_position or "bottom",
+                "make_thumbnail": bool(make_thumbnail),
                 "preview": False,
                 "show_title": False, "channel": "",
                 "logo": "", "use_logo": False,
@@ -250,8 +252,10 @@ def build_gradio_ui():
             # ── Tab 2: Studio (voice + video) ─────────────────────────────
             with gr.Tab("🎬 Studio"):
                 with gr.Row():
-                    with gr.Column(scale=2):
-                        gr.Markdown("### 📖 Story")
+
+                    # ── Left sidebar ──────────────────────────────────────
+                    with gr.Column(scale=1, min_width=220):
+                        gr.Markdown("#### 📁 Project")
                         debug_story = (
                             [DEBUG_STORY_JSON]
                             if APP_DEBUG and DEBUG_STORY_JSON and os.path.isfile(DEBUG_STORY_JSON)
@@ -259,101 +263,134 @@ def build_gradio_ui():
                         )
                         story_json = gr.File(
                             value=debug_story,
-                            label="Story JSON files (upload in Story 1, 2, 3 order)",
+                            label="Story JSON (1, 2, 3 order)",
                             file_types=[".json"],
                             type="filepath",
                             file_count="multiple",
                         )
                         story_authors = gr.Textbox(
-                            value="Anonymous", label="Authors in order (comma-separated)",
-                            placeholder="Anonymous, Ranger P., John")
+                            value="Anonymous",
+                            label="Authors (comma-separated)",
+                            placeholder="Anonymous, Ranger P.")
+                        voice_source = gr.Radio(
+                            ["generate", "existing"], value="generate", label="Voice source")
+
+                        gr.Markdown("#### 📤 Output")
+                        voice_out = gr.Textbox(value="voice_final.mp3", label="Voice output")
+                        segments_output = gr.Textbox(value="segments_audio", label="Segments folder")
+                        video_out = gr.Textbox(value="", label="Video output (.mp4)")
+
+                        gr.Markdown("#### 🎴 Story Cards")
                         story_card_duration = gr.Slider(
                             3, 5, value=DEFAULT_STORY_CARD_DURATION, step=0.5,
-                            label="Story-card duration (3–5 seconds)")
+                            label="Card duration (s)")
                         story_card_bg = gr.Textbox(
-                            value=STORY_CARD_BG, label="Story-card background sound")
-                        voice_source = gr.Radio(["generate", "existing"], value="generate", label="Voice source")
-                        voice_out = gr.Textbox(value="voice_final.mp3", label="Final voice output")
-                        segments_output = gr.Textbox(value="segments_audio", label="Individual segment folder")
+                            value=STORY_CARD_BG, label="Card background sound")
 
-                    with gr.Column(scale=5):
-                        with gr.Accordion("🎙 Voice settings", open=True):
-                            with gr.Row():
-                                voice_preset = gr.Dropdown(list(VOICE_PRESETS), value="Balanced Neutral", label="Preset")
-                                voice_style = gr.Dropdown(list(VOICE_STYLES), value="Balanced", label="Style")
-                            voice_ref = gr.File(
-                                value=DEFAULT_VOICE_REF,
-                                label="Reference voice (optional)",
-                                file_types=["audio"],
-                                type="filepath",
-                            )
-                            voice_file = gr.File(label="Existing voice (when source = existing)", file_types=["audio"], type="filepath")
+                        gr.Markdown("#### ▶ Actions")
+                        run_btn = gr.Button("▶ Generate Voice", size="sm")
+                        video_btn = gr.Button("🎬 Make Video", variant="primary", size="sm")
 
-                        with gr.Accordion("⚙️ VoxCPM2 advanced", open=False):
-                            with gr.Row():
-                                cfg_value = gr.Slider(1.0, 3.0, value=1.7, step=0.1, label="CFG guidance (1.6–1.8 for Khmer)")
-                                max_workers = gr.Slider(1, 2, value=2, step=1, label="Parallel workers")
-                            with gr.Row():
-                                do_normalize = gr.Checkbox(value=False, label="Text normalization")
-                                denoise = gr.Checkbox(value=True, label="Reference denoising")
-                            auto_emotion = gr.Checkbox(
-                                value=False, label="Different feeling for every segment",
-                                info="Uses emotion/feeling/mood from JSON, or detects it from English segment text.")
-                            speaker_lock = gr.Checkbox(
-                                value=True, label="Lock one narrator voice for all segments",
-                                info="Creates one anchor voice, then clones it to prevent gender/age changes.")
+                    # ── Main content with inner setting tabs ──────────────
+                    with gr.Column(scale=4):
+                        with gr.Tabs():
 
-                        with gr.Accordion("🎵 Background audio", open=False):
-                            bg_music = gr.File(label="Music file (optional, overrides stock query)", file_types=["audio"], type="filepath")
-                            bg_sound_query = gr.Textbox(
-                                value="",
-                                label="Stock background music query (leave blank to skip)",
-                                placeholder="e.g. dark ambient horror, suspense, eerie wind",
-                                info="Downloads free music from Pixabay (needs PIXABAY_KEY in .env) or ccMixter. Ignored when a Music file is uploaded.",
-                            )
-                            bg_percent = gr.Slider(0.0, 0.5, value=0.18, step=0.01, label="Music level")
-                            auto_amb = gr.Checkbox(value=False, label="Generate dark ambience when no music is selected")
+                            with gr.Tab("🎙 Voice"):
+                                with gr.Row():
+                                    voice_preset = gr.Dropdown(
+                                        list(VOICE_PRESETS), value="Balanced Neutral", label="Preset")
+                                    voice_style = gr.Dropdown(
+                                        list(VOICE_STYLES), value="Balanced", label="Style")
+                                voice_ref = gr.File(
+                                    value=DEFAULT_VOICE_REF,
+                                    label="Reference voice (optional — for cloning)",
+                                    file_types=["audio"], type="filepath")
+                                voice_file = gr.File(
+                                    label="Existing voice file (when source = existing)",
+                                    file_types=["audio"], type="filepath")
 
-                        with gr.Accordion("🎬 Video settings", open=True):
-                            video_out = gr.Textbox(value="", label="Video output (.mp4; blank = beside JSON)")
-                            with gr.Row():
-                                resolution = gr.Dropdown(["1920x1080", "1280x720"], value="1280x720", label="Resolution")
-                                fps = gr.Slider(12, 30, value=20, step=1, label="FPS")
-                                crf = gr.Slider(18, 28, value=18, step=1, label="Quality CRF")
-                            transition_duration = gr.Slider(
-                                0.3, 3.0, value=1.5, step=0.1,
-                                label="Transition speed (seconds; higher = slower)")
-                            effect_style = gr.Dropdown(
-                                ["Horror Cinematic", "Blood Red", "Black & White Dread", "Natural Dark"],
-                                value="Horror Cinematic", label="Horror visual effect")
+                            with gr.Tab("⚙️ Advanced"):
+                                with gr.Row():
+                                    cfg_value = gr.Slider(
+                                        1.0, 3.0, value=1.7, step=0.1,
+                                        label="CFG guidance (1.6–1.8 for Khmer)")
+                                    max_workers = gr.Slider(
+                                        1, 2, value=2, step=1, label="Parallel workers")
+                                with gr.Row():
+                                    do_normalize = gr.Checkbox(value=False, label="Text normalization")
+                                    denoise = gr.Checkbox(value=True, label="Reference denoising")
+                                auto_emotion = gr.Checkbox(
+                                    value=False, label="Different feeling for every segment",
+                                    info="Uses emotion/feeling/mood from JSON, or detects from English text.")
+                                speaker_lock = gr.Checkbox(
+                                    value=True, label="Lock one narrator voice for all segments",
+                                    info="Creates one anchor voice, then clones it to prevent gender/age changes.")
 
-                        with gr.Accordion("💬 Subtitles / Captions", open=False):
-                            enable_subtitles = gr.Checkbox(
-                                value=False,
-                                label="Burn captions into video",
-                                info="Reads narration timing from voice timeline. Adds one re-encode pass.")
-                            with gr.Row():
-                                subtitle_size = gr.Slider(
-                                    14, 48, value=28, step=2, label="Font size (px)")
-                                subtitle_position = gr.Dropdown(
-                                    ["bottom", "top", "center"], value="bottom", label="Position")
+                            with gr.Tab("🎵 Audio"):
+                                bg_music = gr.File(
+                                    label="Music file (optional — overrides stock query)",
+                                    file_types=["audio"], type="filepath")
+                                bg_sound_query = gr.Textbox(
+                                    value="",
+                                    label="Stock music query (leave blank to skip)",
+                                    placeholder="e.g. dark ambient horror, suspense, eerie wind",
+                                    info="Downloads free music from Pixabay (PIXABAY_KEY) or ccMixter. Ignored when a file is uploaded.")
+                                with gr.Row():
+                                    bg_percent = gr.Slider(
+                                        0.0, 0.5, value=0.18, step=0.01, label="Music level")
+                                    auto_amb = gr.Checkbox(
+                                        value=False, label="Generate dark ambience if no music")
 
-                with gr.Row():
-                    run_btn = gr.Button("▶ Generate Voice")
-                    video_btn = gr.Button("🎬 Make Video", variant="primary")
-                with gr.Row():
-                    run_log = gr.Textbox(label="Live log", lines=18, interactive=False, elem_id="run-log", scale=4)
-                    output_audio = gr.Audio(label="Final voice", type="filepath", interactive=False, scale=2)
-                    output_video = gr.Video(label="Final video", interactive=False, scale=3)
+                            with gr.Tab("🎬 Video"):
+                                with gr.Row():
+                                    resolution = gr.Dropdown(
+                                        ["1920x1080", "1280x720"], value="1280x720", label="Resolution")
+                                    fps = gr.Slider(12, 30, value=20, step=1, label="FPS")
+                                    crf = gr.Slider(18, 28, value=18, step=1, label="Quality CRF")
+                                transition_duration = gr.Slider(
+                                    0.3, 3.0, value=1.5, step=0.1,
+                                    label="Transition speed (s — higher = slower)")
+                                effect_style = gr.Dropdown(
+                                    ["Horror Cinematic", "Blood Red",
+                                     "Black & White Dread", "Natural Dark"],
+                                    value="Horror Cinematic", label="Horror visual effect")
+                                make_thumbnail = gr.Checkbox(
+                                    value=True, label="Generate thumbnail beside video",
+                                    info="Saves a cinematic thumbnail JPG with title text.")
+
+                            with gr.Tab("💬 Subtitles"):
+                                enable_subtitles = gr.Checkbox(
+                                    value=False, label="Burn captions into video",
+                                    info="Uses narration timing from voice timeline. Adds one re-encode pass.")
+                                with gr.Row():
+                                    subtitle_size = gr.Slider(
+                                        14, 48, value=28, step=2, label="Font size (px)")
+                                    subtitle_position = gr.Dropdown(
+                                        ["bottom", "top", "center"],
+                                        value="bottom", label="Position")
+
+                        gr.Markdown("---")
+                        with gr.Row():
+                            run_log = gr.Textbox(
+                                label="Live log", lines=16, interactive=False,
+                                elem_id="run-log", scale=4)
+                            with gr.Column(scale=3):
+                                output_audio = gr.Audio(
+                                    label="Final voice", type="filepath", interactive=False)
+                                output_video = gr.Video(
+                                    label="Final video", interactive=False)
 
                 inputs = [story_json, voice_source, voice_preset, voice_style, voice_ref,
-                          voice_file, cfg_value, do_normalize, denoise, auto_emotion, speaker_lock, max_workers,
-                          bg_music, bg_sound_query, bg_percent, auto_amb, voice_out, segments_output]
+                          voice_file, cfg_value, do_normalize, denoise, auto_emotion,
+                          speaker_lock, max_workers,
+                          bg_music, bg_sound_query, bg_percent, auto_amb,
+                          voice_out, segments_output]
                 run_btn.click(_gradio_run_voice, inputs=inputs, outputs=[run_log, output_audio])
                 video_inputs = inputs + [story_authors, story_card_duration, story_card_bg,
                                          video_out,
                                          resolution, fps, crf, transition_duration, effect_style,
-                                         enable_subtitles, subtitle_size, subtitle_position]
+                                         enable_subtitles, subtitle_size, subtitle_position,
+                                         make_thumbnail]
                 video_btn.click(_gradio_run_video, inputs=video_inputs, outputs=[run_log, output_video])
 
     return demo, css
