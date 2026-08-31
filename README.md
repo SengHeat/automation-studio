@@ -44,11 +44,29 @@ Generate a complete story JSON from a title and premise using Claude AI.
 
 ### 🎬 Video Rendering
 - Auto-downloads stock footage from Pexels for each segment (`PEXELS_KEY` required)
+- **AI Image Generator** — optionally replaces Pexels with DALL-E 3 generated images (`OPENAI_KEY`)
 - Ken Burns slow-zoom effect for still images
 - 4 cinematic color grades: Horror Cinematic, Blood Red, Black & White Dread, Natural Dark
 - Smooth xfade transitions between clips
 - Multi-story compilation with story cards
 - FFmpeg-based rendering at up to 1080p
+- Thumbnail generator: saves cinematic JPG beside the output video
+
+### 💬 Subtitles / Captions
+- Burns captions directly into the video via FFmpeg `drawtext` filter
+- Timed from the voice timeline JSON — always in sync with narration
+- Configurable font size and position (bottom / top / center)
+
+### 📂 Story History & Manager
+- Scans any folder for saved story JSON files
+- Shows title, segment count, duration, and language
+- Preview JSON content, send to Studio tab, or delete files
+
+### 📺 YouTube Auto-Upload
+- Uploads rendered video to YouTube via the Data API v3
+- OAuth2 device-code flow — authorize once, reuses refresh token
+- Set title, description, tags, and privacy (private/unlisted/public)
+- No third-party libraries required
 
 ---
 
@@ -74,6 +92,9 @@ DEFAULT_VOICE_REF=/path/to/reference.mp3
 
 # Optional: background sound for story cards
 STORY_CARD_BG=/path/to/card_sound.mp3
+
+# Optional: OpenAI key for DALL-E 3 AI image generation per segment
+OPENAI_KEY=sk-...
 ```
 
 ### 2. Get API Keys
@@ -84,6 +105,7 @@ STORY_CARD_BG=/path/to/card_sound.mp3
 | `ANTHROPIC_KEY` | console.anthropic.com | Pay-as-you-go (~$0.001/story) |
 | `PIXABAY_KEY` | pixabay.com/api/docs | Free |
 | `HF_TOKEN` | huggingface.co/settings/tokens | Free |
+| `OPENAI_KEY` | platform.openai.com/api-keys | ~$0.04/image (DALL-E 3) |
 
 > **Note:** `PIXABAY_KEY` and `ANTHROPIC_KEY` are optional. Without Pixabay, background music falls back to ccMixter (free, no key). Without Anthropic, the Story Generator tab is disabled.
 
@@ -161,6 +183,8 @@ Supported emotion values: `neutral`, `calm`, `mysterious`, `tense`, `fear`, `sad
 | `automation_studio/stock_media.py` | Pexels video, Pixabay/ccMixter audio download |
 | `automation_studio/video.py` | FFmpeg rendering and compilation |
 | `automation_studio/pipeline.py` | Top-level workflow orchestration |
-| `automation_studio/gradio_ui.py` | Web UI with two tabs: Generator + Studio |
+| `automation_studio/gradio_ui.py` | Web UI: Generate Story · Studio · History · YouTube |
+| `automation_studio/image_generator.py` | DALL-E 3 AI image generation per segment |
+| `automation_studio/uploader.py` | YouTube Data API v3 uploader (OAuth2 device flow) |
 | `automation_studio/tkinter_ui.py` | Optional desktop UI |
 | `automation_studio/application.py` | Compatibility facade |

@@ -259,6 +259,133 @@ def _hist_delete_file(fpath):
         return f"❌ Delete failed: {e}"
 
 
+def _yt_authorize(client_secrets_path, token_path):
+    """Streaming generator: start device-code flow and poll until authorized."""
+    import gradio as gr
+    from .uploader import load_client_secrets, start_device_flow, poll_device_token, save_tokens
+
+    messages = []
+
+    def log(m):
+        messages.append(str(m))
+
+    if not client_secrets_path or not os.path.exists(client_secrets_path):
+        yield "❌ client_secrets.json not found. Download it from Google Cloud Console."
+        return
+
+    token_path = (token_path or "youtube_token.json").strip()
+
+    try:
+        secrets = load_client_secrets(client_secrets_path)
+        log("🔐 Starting YouTube authorization (device flow)...")
+        flow = start_device_flow(secrets["client_id"])
+        url = flow.get("verification_url", "https://google.com/device")
+        code = flow.get("user_code", "")
+        log(f"\n👉 Visit:  {url}")
+        log(f"   Enter:  {code}\n")
+        log("Waiting for you to authorize in the browser (up to 5 minutes)...")
+        yield "\n".join(messages)
+
+        interval = int(flow.get("interval", 5))
+        device_code = flow["device_code"]
+        deadline = time.time() + 300
+        token = None
+        while time.time() < deadline:
+            time.sleep(interval)
+            try:
+                import urllib.error
+                import urllib.parse
+                import urllib.request
+                data = {}
+                payload = urllib.parse.urlencode({
+                    "client_id": secrets["client_id"],
+                    "client_secret": secrets["client_secret"],
+                    "device_code": device_code,
+                    "grant_type": "urn:ietf:params:oauth2:grant-type:device_code",
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    "https://oauth2.googleapis.com/token", data=payload,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"})
+                try:
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                except urllib.error.HTTPError as exc:
+                    data = json.loads(exc.read().decode("utf-8"))
+
+                if "access_token" in data:
+                    data["issued_at"] = time.time()
+                    save_tokens(token_path, data)
+                    log(f"\n✅ Authorized! Token saved to: {token_path}")
+                    token = data
+                    break
+                if data.get("error") == "slow_down":
+                    interval += 5
+                elif data.get("error") not in ("authorization_pending", None):
+                    log(f"❌ OAuth error: {data.get('error')}")
+                    break
+                else:
+                    log("  Still waiting...")
+            except Exception as exc:
+                log(f"  Poll error: {exc}")
+            yield "\n".join(messages)
+
+        if not token:
+            log("❌ Authorization timed out or failed.")
+    except Exception:
+        log("❌ ERROR:\n" + traceback.format_exc())
+
+    yield "\n".join(messages)
+
+
+def _yt_upload(video_path, title, description, tags, privacy,
+               client_secrets_path, token_path):
+    """Streaming generator: upload a video to YouTube."""
+    from .uploader import upload_to_youtube
+
+    messages = []
+    updates = queue.Queue()
+    finished = threading.Event()
+    result = {"video_id": None}
+
+    def ui_log(m):
+        updates.put(str(m))
+
+    def work():
+        try:
+            vp = (video_path or "").strip()
+            if not vp or not os.path.exists(vp):
+                raise ValueError("Video file not found. Render a video first.")
+            if not client_secrets_path or not os.path.exists(client_secrets_path):
+                raise ValueError("client_secrets.json not found.")
+            tok = (token_path or "youtube_token.json").strip()
+            result["video_id"] = upload_to_youtube(
+                video_path=vp,
+                title=title or os.path.basename(vp),
+                description=description or "",
+                tags=tags or "",
+                privacy=privacy or "private",
+                client_secrets_path=client_secrets_path,
+                token_path=tok,
+                log=ui_log,
+            )
+        except Exception:
+            ui_log("❌ ERROR:\n" + traceback.format_exc())
+        finally:
+            finished.set()
+
+    threading.Thread(target=work, daemon=True).start()
+    collected = []
+    while not finished.is_set() or not updates.empty():
+        try:
+            while True:
+                collected.append(updates.get_nowait())
+        except queue.Empty:
+            pass
+        yield "\n".join(collected), result["video_id"] or ""
+        time.sleep(0.3)
+    yield "\n".join(collected), result["video_id"] or ""
+
+
 def build_gradio_ui():
     """Automation-Studio-style web UI for voice and video generation."""
     import gradio as gr
@@ -266,6 +393,7 @@ def build_gradio_ui():
     css = """
     #run-log textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
     #gen-log textarea  { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    #yt-log textarea   { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
     .studio-title { margin-bottom: 0 !important; }
     """
     with gr.Blocks(title="Horror Voice Studio") as demo:
@@ -509,6 +637,54 @@ def build_gradio_ui():
                     _hist_scan,
                     inputs=[hist_folder],
                     outputs=[hist_file_dd, hist_status])
+
+            # ── Tab 4: YouTube Upload ──────────────────────────────────
+            with gr.Tab("📺 YouTube"):
+                gr.Markdown(
+                    "### Upload rendered video to YouTube\n"
+                    "Requires a **client_secrets.json** from Google Cloud Console "
+                    "(YouTube Data API v3, Desktop app OAuth).")
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        yt_secrets = gr.File(
+                            label="client_secrets.json",
+                            file_types=[".json"], type="filepath")
+                        yt_token = gr.Textbox(
+                            value="youtube_token.json",
+                            label="Token save path")
+                        yt_auth_btn = gr.Button("🔐 Authorize YouTube", size="sm")
+                        gr.Markdown("---")
+                        yt_video = gr.Textbox(
+                            label="Video file path",
+                            placeholder="/path/to/output.mp4")
+                        yt_title = gr.Textbox(label="Title", placeholder="My Horror Story")
+                        yt_description = gr.Textbox(
+                            label="Description", lines=4,
+                            placeholder="Generated with Automation Studio...")
+                        yt_tags = gr.Textbox(
+                            label="Tags (comma-separated)",
+                            placeholder="horror, narration, creepy")
+                        yt_privacy = gr.Dropdown(
+                            ["private", "unlisted", "public"],
+                            value="private", label="Privacy")
+                        yt_upload_btn = gr.Button(
+                            "📤 Upload to YouTube", variant="primary", size="sm")
+                    with gr.Column(scale=2):
+                        yt_log = gr.Textbox(
+                            label="Log", lines=20, interactive=False,
+                            elem_id="yt-log")
+                        yt_video_id = gr.Textbox(
+                            label="YouTube Video ID / URL", interactive=False)
+
+                yt_auth_btn.click(
+                    _yt_authorize,
+                    inputs=[yt_secrets, yt_token],
+                    outputs=[yt_log])
+                yt_upload_btn.click(
+                    _yt_upload,
+                    inputs=[yt_video, yt_title, yt_description, yt_tags,
+                            yt_privacy, yt_secrets, yt_token],
+                    outputs=[yt_log, yt_video_id])
 
     return demo, css
 
