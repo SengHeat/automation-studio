@@ -15,6 +15,48 @@ from .stock_media import (VIDEO_EXT, _media_duration, _segment_time_range,
                           _video_windows)
 
 
+def _build_subtitle_filter(segments, timeline_path, font_size=28, position="bottom"):
+    """Build a comma-chained FFmpeg drawtext filter string from timeline.json.
+
+    Each drawtext uses enable='between(t,start,end)' so only one caption is
+    visible at a time. Returns "" if the timeline file is missing or empty.
+    """
+    if not timeline_path or not os.path.exists(timeline_path):
+        return ""
+    try:
+        timeline = json.load(open(timeline_path, encoding="utf-8"))
+    except Exception:
+        return ""
+    if not timeline:
+        return ""
+
+    seg_map = {s.get("segment_id"): s for s in segments}
+    y_expr = {"top": "30", "center": "(h-text_h)/2"}.get(position, "h-text_h-40")
+    parts = []
+    for entry in timeline:
+        sid = entry.get("segment_id")
+        start = entry.get("start_ms", 0) / 1000.0
+        end = entry.get("end_ms", 0) / 1000.0
+        if end <= start:
+            continue
+        seg = seg_map.get(sid, {})
+        text = re.sub(r"\s+", " ", (seg.get("target_text") or seg.get("narration", ""))).strip()
+        m = re.match(r"^[^.!?]+[.!?]", text)
+        text = m.group(0).strip() if m else text[:100]
+        if not text:
+            continue
+        # Escape characters special to FFmpeg drawtext
+        text = text.replace("\\", "\\\\").replace("'", "\u2019").replace(":", "\\:").replace(",", "\\,").replace("[", "\\[").replace("]", "\\]")
+        parts.append(
+            f"drawtext=fontsize={font_size}:fontcolor=white"
+            f":x=(w-text_w)/2:y={y_expr}"
+            f":text='{text}'"
+            f":enable='between(t,{start:.3f},{end:.3f})'"
+            f":box=1:boxcolor=black@0.5:boxborderw=8"
+        )
+    return ",".join(parts)
+
+
 def render_json_video(cfg, voice_path, segments, log, progress):
     """Self-contained FFmpeg renderer for JSON-assigned images and videos."""
     width, height = cfg["width"], cfg["height"]
@@ -166,6 +208,28 @@ def render_json_video(cfg, voice_path, segments, log, progress):
             log("❌ Could not join rendered video holds:\n" +
                 "\n".join(concat.stderr.splitlines()[-6:]))
             return None
+
+        # Phase 2.5 — subtitle burn-in (optional, one extra encode pass)
+        if cfg.get("enable_subtitles") and not cfg.get("mute_audio"):
+            timeline_path = voice_path + ".timeline.json"
+            sub_filter = _build_subtitle_filter(
+                segments, timeline_path,
+                font_size=int(cfg.get("subtitle_size", 28)),
+                position=cfg.get("subtitle_position", "bottom"),
+            )
+            if sub_filter:
+                joined_sub = os.path.join(work, "joined_sub.mp4")
+                sub_cmd = [FFMPEG, "-y", "-i", joined, "-vf", sub_filter,
+                           "-c:v", "libx264", "-crf", str(crf),
+                           "-preset", "fast", "-pix_fmt", "yuv420p", joined_sub]
+                sub_result = subprocess.run(sub_cmd, capture_output=True, text=True, timeout=600)
+                if sub_result.returncode == 0 and os.path.getsize(joined_sub) > 0:
+                    joined = joined_sub
+                    log("  subtitles burned in")
+                else:
+                    log("  ⚠️ subtitle burn-in failed — rendering without captions")
+            else:
+                log("  ⚠️ no timeline found — skipping subtitles")
 
         output = cfg["out"]
         voice_duration = min(20.0, audio_dur(voice_path)) if cfg.get("preview") else audio_dur(voice_path)

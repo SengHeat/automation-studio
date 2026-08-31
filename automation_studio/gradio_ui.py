@@ -75,7 +75,8 @@ def _gradio_run_video(json_path, voice_source, voice_preset, voice_style, voice_
                       bg_music, bg_sound_query, bg_percent, auto_amb, voice_out, segments_output,
                       story_authors, story_card_duration, story_card_bg,
                       video_out,
-                      resolution, fps, crf, transition_duration, effect_style):
+                      resolution, fps, crf, transition_duration, effect_style,
+                      enable_subtitles, subtitle_size, subtitle_position):
     """Stream the voice + built-in video-rendering pipeline to Gradio."""
     messages, updates = [], queue.Queue()
     finished = threading.Event()
@@ -107,7 +108,11 @@ def _gradio_run_video(json_path, voice_source, voice_preset, voice_style, voice_
                 "resolution": resolution,
                 "fps": int(fps), "crf": int(crf),
                 "transition_duration": float(transition_duration),
-                "effect_style": effect_style, "preview": False,
+                "effect_style": effect_style,
+                "enable_subtitles": bool(enable_subtitles),
+                "subtitle_size": int(subtitle_size),
+                "subtitle_position": subtitle_position or "bottom",
+                "preview": False,
                 "show_title": False, "channel": "",
                 "logo": "", "use_logo": False,
                 "story_card_duration": float(story_card_duration),
@@ -322,6 +327,17 @@ def build_gradio_ui():
                                 ["Horror Cinematic", "Blood Red", "Black & White Dread", "Natural Dark"],
                                 value="Horror Cinematic", label="Horror visual effect")
 
+                        with gr.Accordion("💬 Subtitles / Captions", open=False):
+                            enable_subtitles = gr.Checkbox(
+                                value=False,
+                                label="Burn captions into video",
+                                info="Reads narration timing from voice timeline. Adds one re-encode pass.")
+                            with gr.Row():
+                                subtitle_size = gr.Slider(
+                                    14, 48, value=28, step=2, label="Font size (px)")
+                                subtitle_position = gr.Dropdown(
+                                    ["bottom", "top", "center"], value="bottom", label="Position")
+
                 with gr.Row():
                     run_btn = gr.Button("▶ Generate Voice")
                     video_btn = gr.Button("🎬 Make Video", variant="primary")
@@ -336,7 +352,8 @@ def build_gradio_ui():
                 run_btn.click(_gradio_run_voice, inputs=inputs, outputs=[run_log, output_audio])
                 video_inputs = inputs + [story_authors, story_card_duration, story_card_bg,
                                          video_out,
-                                         resolution, fps, crf, transition_duration, effect_style]
+                                         resolution, fps, crf, transition_duration, effect_style,
+                                         enable_subtitles, subtitle_size, subtitle_position]
                 video_btn.click(_gradio_run_video, inputs=video_inputs, outputs=[run_log, output_video])
 
     return demo, css

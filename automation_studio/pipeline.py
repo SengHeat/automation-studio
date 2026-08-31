@@ -213,7 +213,10 @@ def run_make_video(cfg, log, progress):
                   "channel": cfg.get("channel", ""), "channel_corner": cfg.get("channel_corner", "top-right"),
                   "mute_audio": bool(cfg.get("video_only", False)),
                   "effect_style": cfg.get("effect_style", "Horror Cinematic"), "bg_music": cfg.get("bg_music", ""),
-                  "bg_percent": float(cfg.get("bg_percent", 0.18)), "json": cfg["json"]}
+                  "bg_percent": float(cfg.get("bg_percent", 0.18)), "json": cfg["json"],
+                  "enable_subtitles": bool(cfg.get("enable_subtitles", False)),
+                  "subtitle_size": int(cfg.get("subtitle_size", 28)),
+                  "subtitle_position": cfg.get("subtitle_position", "bottom")}
     log("STEP 4  rendering video with jruy.py built-in engine...")
     try:
         render_json_video(render_cfg, voice, segments, log, progress)
