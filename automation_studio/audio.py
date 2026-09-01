@@ -323,3 +323,85 @@ def merge_voice(clips_folder, segments, out_voice, bg_music, bg_percent, log,
                 f.write(f"  {sid:02d}.mp3\n")
 
     return out_voice
+
+
+def export_srt(timeline_path, segments, srt_path):
+    """Convert a voice timeline JSON to an SRT subtitle file.
+
+    Returns the path to the written .srt file, or "" on failure.
+    """
+    if not os.path.exists(timeline_path):
+        return ""
+    try:
+        with open(timeline_path, encoding="utf-8") as f:
+            timeline = json.load(f)
+    except Exception:
+        return ""
+    if not timeline:
+        return ""
+
+    seg_map = {s.get("segment_id"): s for s in segments}
+
+    def ms_to_srt(ms):
+        ms = max(0, int(ms))
+        h, rem = divmod(ms, 3_600_000)
+        m, rem = divmod(rem, 60_000)
+        s, ms = divmod(rem, 1_000)
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    lines = []
+    for i, entry in enumerate(timeline, start=1):
+        seg = seg_map.get(entry.get("segment_id"), {})
+        text = (seg.get("target_text") or seg.get("narration") or "").strip()
+        text = re.sub(r"\s+", " ", text)
+        if not text:
+            continue
+        lines.append(str(i))
+        lines.append(f"{ms_to_srt(entry['start_ms'])} --> {ms_to_srt(entry['end_ms'])}")
+        lines.append(text)
+        lines.append("")
+
+    if not lines:
+        return ""
+
+    with open(srt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return srt_path
+
+
+def generate_youtube_chapters(segments, timeline_path):
+    """Generate YouTube chapter markers string from segment timing.
+
+    Returns a formatted string suitable for copy-pasting into a YouTube
+    video description, or "" if timing data is unavailable.
+    """
+    if not os.path.exists(timeline_path):
+        return ""
+    try:
+        with open(timeline_path, encoding="utf-8") as f:
+            timeline = json.load(f)
+    except Exception:
+        return ""
+    if not timeline:
+        return ""
+
+    seg_map = {s.get("segment_id"): s for s in segments}
+
+    def ms_to_yt(ms):
+        ms = max(0, int(ms))
+        h, rem = divmod(ms, 3_600_000)
+        m, s = divmod(rem // 1_000, 60)
+        if h:
+            return f"{h}:{m:02d}:{s:02d}"
+        return f"{m}:{s:02d}"
+
+    chapter_lines = []
+    for entry in timeline:
+        seg = seg_map.get(entry.get("segment_id"), {})
+        title = (seg.get("title") or seg.get("target_text") or "")[:60].strip()
+        title = re.sub(r"\s+", " ", title)
+        if not title:
+            title = f"Part {entry.get('segment_id', '?')}"
+        chapter_lines.append(f"{ms_to_yt(entry['start_ms'])} {title}")
+
+    return "\n".join(chapter_lines)

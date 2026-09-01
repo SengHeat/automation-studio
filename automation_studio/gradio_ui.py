@@ -10,6 +10,7 @@ import traceback
 from .config import (APP_DEBUG, DEBUG_STORY_JSON, DEFAULT_STORY_CARD_DURATION,
                      DEFAULT_VOICE_REF, STORY_CARD_BG, VOICE_PRESETS,
                      VOICE_STYLES)
+from .audio import export_srt, generate_youtube_chapters
 from .pipeline import _flatten_segments, _make_voice, run_make_video, run_voice_only
 from .story_generator import _GENRES, generate_story_json, save_story_json
 from .video import run_make_multi_story_video
@@ -78,7 +79,10 @@ def _gradio_run_video(json_path, voice_source, voice_preset, voice_style, voice_
                       video_out,
                       resolution, fps, crf, transition_duration, effect_style,
                       enable_subtitles, subtitle_size, subtitle_position,
-                      make_thumbnail=True, use_ai_images=False):
+                      make_thumbnail=True, use_ai_images=False,
+                      show_title=False, logo=None, use_logo=False,
+                      logo_corner="bottom-right", channel="",
+                      channel_corner="top-right"):
     """Stream the voice + built-in video-rendering pipeline to Gradio."""
     messages, updates = [], queue.Queue()
     finished = threading.Event()
@@ -116,9 +120,12 @@ def _gradio_run_video(json_path, voice_source, voice_preset, voice_style, voice_
                 "subtitle_position": subtitle_position or "bottom",
                 "make_thumbnail": bool(make_thumbnail),
                 "use_ai_images": bool(use_ai_images),
+                "show_title": bool(show_title),
+                "logo": logo or "", "use_logo": bool(use_logo),
+                "logo_corner": logo_corner or "bottom-right",
+                "channel": channel or "",
+                "channel_corner": channel_corner or "top-right",
                 "preview": False,
-                "show_title": False, "channel": "",
-                "logo": "", "use_logo": False,
                 "story_card_duration": float(story_card_duration),
                 "story_card_bg": story_card_bg or "",
             }
@@ -188,6 +195,157 @@ def _gradio_generate_story(title, premise, genre, duration_minutes,
         yield "\n".join(messages), result["preview"], result["path"]
         time.sleep(0.25)
     yield "\n".join(messages), result["preview"], result["path"]
+
+
+def _export_srt(voice_out, json_path):
+    """Export .srt subtitle file from the voice timeline."""
+    voice_path = (voice_out or "voice_final.mp3").strip()
+    timeline_path = voice_path + ".timeline.json"
+    if not os.path.exists(timeline_path):
+        return f"❌ Timeline not found: {timeline_path}\nGenerate voice first.", None
+    try:
+        story_path = json_path[0] if isinstance(json_path, (list, tuple)) and json_path else json_path
+        if story_path and os.path.exists(story_path):
+            with open(story_path, encoding="utf-8") as f:
+                data = json.load(f)
+            segments = _flatten_segments(data)
+        else:
+            segments = []
+        srt_path = os.path.splitext(voice_path)[0] + ".srt"
+        result = export_srt(timeline_path, segments, srt_path)
+        if result:
+            return f"✅ SRT exported: {result}", result
+        return "❌ SRT export failed — timeline may be empty.", None
+    except Exception:
+        return "❌ ERROR:\n" + traceback.format_exc(), None
+
+
+def _generate_chapters(voice_out, json_path):
+    """Generate YouTube chapter markers from voice timeline."""
+    voice_path = (voice_out or "voice_final.mp3").strip()
+    timeline_path = voice_path + ".timeline.json"
+    if not os.path.exists(timeline_path):
+        return "❌ Timeline not found. Generate voice first.", ""
+    try:
+        story_path = json_path[0] if isinstance(json_path, (list, tuple)) and json_path else json_path
+        if story_path and os.path.exists(story_path):
+            with open(story_path, encoding="utf-8") as f:
+                data = json.load(f)
+            segments = _flatten_segments(data)
+        else:
+            segments = []
+        chapters = generate_youtube_chapters(segments, timeline_path)
+        if chapters:
+            return "✅ Chapters generated — copy into your YouTube description:", chapters
+        return "❌ No timing data found.", ""
+    except Exception:
+        return "❌ ERROR:\n" + traceback.format_exc(), ""
+
+
+def _save_preset(preset_path, *values):
+    """Save current Studio settings to a JSON preset file."""
+    keys = [
+        "voice_preset", "voice_style", "cfg_value", "do_normalize", "denoise",
+        "auto_emotion", "speaker_lock", "max_workers", "bg_percent", "auto_amb",
+        "bg_sound_query", "resolution", "fps", "crf", "transition_duration",
+        "effect_style", "enable_subtitles", "subtitle_size", "subtitle_position",
+        "make_thumbnail", "use_ai_images", "show_title", "use_logo", "logo_corner",
+        "channel", "channel_corner",
+    ]
+    preset_path = (preset_path or "studio_preset.json").strip()
+    data = dict(zip(keys, values))
+    try:
+        with open(preset_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        return f"✅ Preset saved: {preset_path}"
+    except Exception as exc:
+        return f"❌ Save failed: {exc}"
+
+
+def _load_preset(preset_path):
+    """Load Studio settings from a JSON preset file. Returns list of values in key order."""
+    import gradio as gr
+    preset_path = (preset_path or "studio_preset.json").strip()
+    if not os.path.exists(preset_path):
+        return [gr.update()] * 26 + [f"❌ File not found: {preset_path}"]
+    try:
+        with open(preset_path, encoding="utf-8") as f:
+            data = json.load(f)
+        keys = [
+            "voice_preset", "voice_style", "cfg_value", "do_normalize", "denoise",
+            "auto_emotion", "speaker_lock", "max_workers", "bg_percent", "auto_amb",
+            "bg_sound_query", "resolution", "fps", "crf", "transition_duration",
+            "effect_style", "enable_subtitles", "subtitle_size", "subtitle_position",
+            "make_thumbnail", "use_ai_images", "show_title", "use_logo", "logo_corner",
+            "channel", "channel_corner",
+        ]
+        updates = [gr.update(value=data[k]) if k in data else gr.update() for k in keys]
+        return updates + [f"✅ Loaded preset: {preset_path}"]
+    except Exception as exc:
+        return [gr.update()] * 26 + [f"❌ Load failed: {exc}"]
+
+
+def _preview_segment(json_path, segment_index, voice_preset, voice_style, voice_ref,
+                     cfg_value, do_normalize, denoise, speaker_lock):
+    """Generate voice for a single segment and return it for preview."""
+    messages = []
+    updates = queue.Queue()
+    finished = threading.Event()
+    result = {"path": None}
+
+    def ui_log(m):
+        updates.put(str(m))
+
+    def work():
+        try:
+            story_path = json_path[0] if isinstance(json_path, (list, tuple)) and json_path else json_path
+            if not story_path or not os.path.exists(story_path):
+                raise ValueError("Load a Story JSON first.")
+            with open(story_path, encoding="utf-8") as f:
+                data = json.load(f)
+            segments = _flatten_segments(data)
+            if not segments:
+                raise ValueError("No segments found.")
+            idx = max(0, min(int(segment_index or 0), len(segments) - 1))
+            seg = segments[idx]
+            ui_log(f"Previewing segment {idx + 1}: \"{(seg.get('target_text') or '')[:60]}...\"")
+            import tempfile
+            from .voice import generate_voice
+            tmp = tempfile.mkdtemp(prefix="preview_")
+            voice_cfg = {
+                "voice_preset": voice_preset or "Balanced Neutral",
+                "voice_style": voice_style or "Balanced",
+                "cfg_value": float(cfg_value or 1.7),
+                "do_normalize": bool(do_normalize),
+                "denoise": bool(denoise),
+                "auto_emotion": False,
+                "speaker_lock": bool(speaker_lock),
+            }
+            generate_voice([seg], voice_ref or "", tmp, ui_log, voice_cfg, max_workers=1)
+            # Find the generated file
+            import glob
+            clips = glob.glob(os.path.join(tmp, "*.mp3")) + glob.glob(os.path.join(tmp, "*.wav"))
+            if clips:
+                result["path"] = clips[0]
+                ui_log(f"✅ Preview ready.")
+            else:
+                ui_log("❌ No audio generated.")
+        except Exception:
+            ui_log("❌ ERROR:\n" + traceback.format_exc())
+        finally:
+            finished.set()
+
+    threading.Thread(target=work, daemon=True).start()
+    collected = []
+    while not finished.is_set() or not updates.empty():
+        try:
+            while True:
+                collected.append(updates.get_nowait())
+        except queue.Empty:
+            pass
+        yield "\n".join(collected), result["path"]
+        time.sleep(0.3)
+    yield "\n".join(collected), result["path"]
 
 
 def _queue_scan_folder(folder, queue_state):
@@ -706,6 +864,61 @@ def build_gradio_ui():
                                         ["bottom", "top", "center"],
                                         value="bottom", label="Position")
 
+                            with gr.Tab("🎨 Branding"):
+                                show_title = gr.Checkbox(
+                                    value=False, label="Show story title card (first 5 seconds)",
+                                    info="Burns the story title at the top of the video for 5 seconds.")
+                                gr.Markdown("**Channel watermark**")
+                                with gr.Row():
+                                    channel = gr.Textbox(
+                                        value="", label="Channel name",
+                                        placeholder="e.g. FilesAtNightfall")
+                                    channel_corner = gr.Dropdown(
+                                        ["top-right", "top-left", "bottom-right", "bottom-left"],
+                                        value="top-right", label="Channel corner")
+                                gr.Markdown("**Logo overlay**")
+                                with gr.Row():
+                                    use_logo = gr.Checkbox(value=False, label="Overlay logo image")
+                                    logo_corner = gr.Dropdown(
+                                        ["bottom-right", "bottom-left", "top-right", "top-left"],
+                                        value="bottom-right", label="Logo corner")
+                                logo = gr.File(
+                                    label="Logo image (PNG with transparency recommended)",
+                                    file_types=["image"], type="filepath")
+
+                            with gr.Tab("🛠 Tools"):
+                                gr.Markdown("**Export SRT subtitles** from the last generated voice timeline")
+                                with gr.Row():
+                                    srt_export_btn = gr.Button("📝 Export SRT", size="sm")
+                                srt_status = gr.Textbox(label="Status", interactive=False, lines=1)
+                                srt_file = gr.File(label="Download .srt file", interactive=False)
+
+                                gr.Markdown("---\n**YouTube Chapter Markers** from voice timeline")
+                                chapter_btn = gr.Button("📋 Generate Chapters", size="sm")
+                                chapter_status = gr.Textbox(label="Status", interactive=False, lines=1)
+                                chapter_text = gr.Textbox(
+                                    label="Chapter markers (copy → paste into YouTube description)",
+                                    lines=10, interactive=True)
+
+                                gr.Markdown("---\n**Voice Segment Preview** — test one segment quickly")
+                                with gr.Row():
+                                    preview_seg_idx = gr.Number(
+                                        value=0, label="Segment index (0 = first)", precision=0)
+                                    preview_seg_btn = gr.Button("▶ Preview Segment", size="sm")
+                                preview_seg_log = gr.Textbox(
+                                    label="Preview log", lines=4, interactive=False)
+                                preview_seg_audio = gr.Audio(
+                                    label="Segment preview", type="filepath", interactive=False)
+
+                                gr.Markdown("---\n**Settings Presets** — save/load Studio config")
+                                with gr.Row():
+                                    preset_path = gr.Textbox(
+                                        value="studio_preset.json", label="Preset file",
+                                        placeholder="studio_preset.json", scale=4)
+                                    preset_save_btn = gr.Button("💾 Save", size="sm", scale=1)
+                                    preset_load_btn = gr.Button("📂 Load", size="sm", scale=1)
+                                preset_status = gr.Textbox(label="Status", interactive=False, lines=1)
+
                         gr.Markdown("---")
                         with gr.Row():
                             run_log = gr.Textbox(
@@ -727,8 +940,52 @@ def build_gradio_ui():
                                          video_out,
                                          resolution, fps, crf, transition_duration, effect_style,
                                          enable_subtitles, subtitle_size, subtitle_position,
-                                         make_thumbnail, use_ai_images]
+                                         make_thumbnail, use_ai_images,
+                                         show_title, logo, use_logo, logo_corner,
+                                         channel, channel_corner]
                 video_btn.click(_gradio_run_video, inputs=video_inputs, outputs=[run_log, output_video])
+
+                # ── Tools tab event bindings ──────────────────────────
+                srt_export_btn.click(
+                    _export_srt,
+                    inputs=[voice_out, story_json],
+                    outputs=[srt_status, srt_file])
+                chapter_btn.click(
+                    _generate_chapters,
+                    inputs=[voice_out, story_json],
+                    outputs=[chapter_status, chapter_text])
+                preview_seg_btn.click(
+                    _preview_segment,
+                    inputs=[story_json, preview_seg_idx, voice_preset, voice_style,
+                            voice_ref, cfg_value, do_normalize, denoise, speaker_lock],
+                    outputs=[preview_seg_log, preview_seg_audio])
+
+                preset_save_inputs = [
+                    preset_path,
+                    voice_preset, voice_style, cfg_value, do_normalize, denoise,
+                    auto_emotion, speaker_lock, max_workers, bg_percent, auto_amb,
+                    bg_sound_query, resolution, fps, crf, transition_duration,
+                    effect_style, enable_subtitles, subtitle_size, subtitle_position,
+                    make_thumbnail, use_ai_images, show_title, use_logo, logo_corner,
+                    channel, channel_corner,
+                ]
+                preset_save_btn.click(
+                    _save_preset,
+                    inputs=preset_save_inputs,
+                    outputs=[preset_status])
+                preset_load_outputs = [
+                    voice_preset, voice_style, cfg_value, do_normalize, denoise,
+                    auto_emotion, speaker_lock, max_workers, bg_percent, auto_amb,
+                    bg_sound_query, resolution, fps, crf, transition_duration,
+                    effect_style, enable_subtitles, subtitle_size, subtitle_position,
+                    make_thumbnail, use_ai_images, show_title, use_logo, logo_corner,
+                    channel, channel_corner,
+                    preset_status,
+                ]
+                preset_load_btn.click(
+                    _load_preset,
+                    inputs=[preset_path],
+                    outputs=preset_load_outputs)
 
             # ── Tab 3: History & Manager ───────────────────────────────
             with gr.Tab("📂 History"):

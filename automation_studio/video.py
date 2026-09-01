@@ -171,6 +171,93 @@ def _build_subtitle_filter(segments, timeline_path, font_size=28, position="bott
     return ",".join(parts)
 
 
+def _esc_drawtext(text):
+    """Escape a string for use inside an FFmpeg drawtext filter."""
+    return (text.replace("\\", "\\\\")
+                .replace("'", "\u2019")
+                .replace(":", r"\:")
+                .replace(",", r"\,")
+                .replace("[", r"\[")
+                .replace("]", r"\]"))
+
+
+def _apply_branding(cfg, joined, work, crf, log):
+    """Apply logo overlay, channel watermark, and/or story title card.
+
+    Inserts a single extra encode pass only when at least one branding
+    element is enabled. Returns the (possibly new) joined path.
+    """
+    logo_path = (cfg.get("logo") or "").strip()
+    has_logo = bool(cfg.get("use_logo") and logo_path and os.path.exists(logo_path))
+    channel = (cfg.get("channel") or "").strip()
+    title = (cfg.get("title") or "").strip()
+    has_title = bool(cfg.get("show_title") and title)
+
+    if not has_logo and not channel and not has_title:
+        return joined  # nothing to do
+
+    corner_overlay = {
+        "top-left": "10:10", "top-right": "W-w-10:10",
+        "bottom-left": "10:H-h-10", "bottom-right": "W-w-10:H-h-10",
+    }
+    corner_text = {
+        "top-left": ("10", "10"), "top-right": ("w-text_w-10", "10"),
+        "bottom-left": ("10", "h-text_h-10"), "bottom-right": ("w-text_w-10", "h-text_h-10"),
+    }
+
+    cmd = [FFMPEG, "-y", "-i", joined]
+    fc_parts = []
+    current = "0:v"
+
+    if has_logo:
+        cmd += ["-i", logo_path]
+        logo_w = max(60, int(cfg.get("width", 1280) * 0.10))
+        pos = corner_overlay.get(cfg.get("logo_corner", "bottom-right"), "W-w-10:H-h-10")
+        fc_parts.append(
+            f"[1:v]scale={logo_w}:-1,format=rgba,colorchannelmixer=aa=0.75[lg]")
+        fc_parts.append(f"[{current}][lg]overlay={pos}[v0]")
+        current = "v0"
+
+    dt_items = []
+    if has_title:
+        dt_items.append(
+            f"drawtext=fontsize=34:fontcolor=white@0.95:x=(w-text_w)/2:y=h*0.08"
+            f":text='{_esc_drawtext(title.upper())}':enable='between(t,0,5)'"
+            f":box=1:boxcolor=black@0.55:boxborderw=12"
+        )
+    if channel:
+        cx, cy = corner_text.get(cfg.get("channel_corner", "top-right"), ("w-text_w-10", "10"))
+        dt_items.append(
+            f"drawtext=fontsize=22:fontcolor=white@0.80:x={cx}:y={cy}"
+            f":text='{_esc_drawtext(channel)}':box=1:boxcolor=black@0.40:boxborderw=5"
+        )
+
+    if dt_items:
+        fc_parts.append(f"[{current}]{','.join(dt_items)}[vb]")
+        current = "vb"
+
+    joined_branded = os.path.join(work, "joined_branded.mp4")
+    cmd += [
+        "-filter_complex", ";".join(fc_parts),
+        "-map", f"[{current}]",
+        "-c:v", "libx264", "-crf", str(crf), "-preset", "fast",
+        "-pix_fmt", "yuv420p", joined_branded,
+    ]
+    result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=600)
+    if result.returncode == 0 and os.path.exists(joined_branded) and os.path.getsize(joined_branded) > 0:
+        parts = []
+        if has_logo:
+            parts.append("logo")
+        if channel:
+            parts.append("channel")
+        if has_title:
+            parts.append("title card")
+        log(f"  branding applied: {', '.join(parts)}")
+        return joined_branded
+    log(f"  ⚠️ branding step failed — continuing without overlay")
+    return joined
+
+
 def render_json_video(cfg, voice_path, segments, log, progress):
     """Self-contained FFmpeg renderer for JSON-assigned images and videos."""
     width, height = cfg["width"], cfg["height"]
@@ -324,6 +411,7 @@ def render_json_video(cfg, voice_path, segments, log, progress):
             return None
 
         # Phase 2.5 — subtitle burn-in (optional, one extra encode pass)
+
         if cfg.get("enable_subtitles") and not cfg.get("mute_audio"):
             timeline_path = voice_path + ".timeline.json"
             sub_filter = _build_subtitle_filter(
@@ -344,6 +432,9 @@ def render_json_video(cfg, voice_path, segments, log, progress):
                     log("  ⚠️ subtitle burn-in failed — rendering without captions")
             else:
                 log("  ⚠️ no timeline found — skipping subtitles")
+
+        # Phase 2.6 — logo overlay, channel watermark, title card (optional)
+        joined = _apply_branding(cfg, joined, work, crf, log)
 
         output = cfg["out"]
         voice_duration = min(20.0, audio_dur(voice_path)) if cfg.get("preview") else audio_dur(voice_path)
