@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/* Utility classes shared across all pages */
+@layer components {
+  .label {
+    @apply block text-xs text-gray-400 mb-1;
+  }
+  .input {
+    @apply w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2
+           text-sm text-gray-100 placeholder-gray-600
+           focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500;
+  }
+  .file-input {
+    @apply block w-full text-xs text-gray-400
+           file:mr-3 file:rounded file:border-0 file:bg-gray-700
+           file:px-3 file:py-1 file:text-xs file:text-gray-200
+           file:cursor-pointer cursor-pointer;
+  }
+  .btn-primary {
+    @apply rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white
+           hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed
+           transition-colors;
+  }
+  .btn-secondary {
+    @apply rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm
+           font-medium text-gray-200 hover:bg-gray-700 disabled:opacity-50
+           transition-colors;
+  }
+  .btn-danger {
+    @apply rounded-lg border border-red-800 bg-red-950/50 px-4 py-2 text-sm
+           font-medium text-red-300 hover:bg-red-900/50 transition-colors;
+  }
+  .check {
+    @apply flex items-center gap-2 text-sm text-gray-300 cursor-pointer;
+  }
+  .check input[type="checkbox"] {
+    @apply accent-blue-500;
+  }
+}

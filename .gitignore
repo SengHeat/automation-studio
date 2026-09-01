@@ -1,24 +1,47 @@
 
-/node_modules
-/public/hot
-/public/storage
-/storage/*.key
-/vendor
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+dist/
+build/
+
+# Environment
 .env
 .env.backup
 .env.testing
-.phpunit.result.cache
-.specs
-Homestead.json
-Homestead.yaml
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.turbo/
 npm-debug.log
 yarn-error.log
+
+# Generated outputs
+*.mp4
+*.mp3
+segments_audio/
+uploads/
+*.srt
+*.timeline.json
+studio_preset.json
+youtube_token.json
+generated_story.json
+converted_story.json
+
+# OS / IDE
+.DS_Store
 /.idea
 /.vscode
-.DS_Store
+/.claude/settings.local.json
+
+# Misc
+.specs
 docker-compose.yml
 docker-compose.*.yml
-/Envoy.blade.php
-/.claude/settings.local.json
-/.mp4
-/.mp3
