@@ -16,6 +16,35 @@ VOXCPM2_URLS = [
 ]
 
 
+def _silence_marker(audio_path):
+    """Return the sidecar used to distinguish fallback silence from real speech."""
+    return audio_path + ".silent"
+
+
+def _is_generated_speech(audio_path):
+    return (os.path.exists(audio_path) and os.path.getsize(audio_path) > 1500
+            and not os.path.exists(_silence_marker(audio_path)))
+
+
+def _clear_silence_marker(audio_path):
+    try:
+        os.unlink(_silence_marker(audio_path))
+    except OSError:
+        pass
+
+
+def _mark_silence(audio_path):
+    with open(_silence_marker(audio_path), "w", encoding="utf-8") as marker:
+        marker.write("Generated fallback silence; retry voice synthesis on the next run.\n")
+
+
+def _remove_file(path):
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def generate_single_segment_retry(client, has_ref, seg, full_ci, out_mp3, voice_ref,
                                   cfg_value, do_normalize, denoise, log, max_retries=4,
                                   text_override=None, label=None):
@@ -33,6 +62,10 @@ def generate_single_segment_retry(client, has_ref, seg, full_ci, out_mp3, voice_
     for attempt in range(1, max_retries + 1):
         try:
             from gradio_client import handle_file
+
+            # A cancelled/crashed prior run may have left this attempt's target
+            # behind. Never mistake that stale file for the current API result.
+            _remove_file(out_mp3)
 
             kwargs = {
                 "text_input": text,
@@ -66,7 +99,7 @@ def generate_single_segment_retry(client, has_ref, seg, full_ci, out_mp3, voice_
             if not audio_path or not os.path.exists(str(audio_path)):
                 raise RuntimeError(f"No valid audio: {audio_path}")
 
-            subprocess.run(
+            converted = subprocess.run(
                 [FFMPEG, "-y", "-i", str(audio_path),
                  "-af", "loudnorm=I=-16:TP=-1.5:LRA=7",
                  "-c:a", "libmp3lame", "-b:a", "192k", out_mp3],
@@ -74,7 +107,9 @@ def generate_single_segment_retry(client, has_ref, seg, full_ci, out_mp3, voice_
                 timeout=45
             )
 
-            if os.path.exists(out_mp3) and os.path.getsize(out_mp3) > 1500:
+            if (converted.returncode == 0 and os.path.exists(out_mp3)
+                    and os.path.getsize(out_mp3) > 1500):
+                _clear_silence_marker(out_mp3)
                 safe_log(log, f"    ✅ {display} (attempt {attempt})")
                 return True
             else:
@@ -173,10 +208,14 @@ def generate_voice_voxcpm2(segments, voice_ref, out_folder, log, voice_cfg, max_
         full_ci = " ".join(p for p in instruction_parts if p).strip()
         log(f"    🎭 seg {sid:02d} feeling: {emotion}")
         out_mp3 = os.path.join(out_folder, f"{sid:02d}.mp3")
-        if os.path.exists(out_mp3) and os.path.getsize(out_mp3) > 1500:
+        if _is_generated_speech(out_mp3):
             log(f"    ⏭️ seg {sid:02d} already exists")
             existing.append(sid)
             continue
+        if os.path.exists(_silence_marker(out_mp3)):
+            log(f"    🔁 seg {sid:02d} was fallback silence; retrying VoxCPM2")
+            _remove_file(out_mp3)
+            _clear_silence_marker(out_mp3)
         jobs.append((sid, seg, full_ci, out_mp3))
 
     total = len(jobs)
@@ -238,7 +277,12 @@ def generate_voice_voxcpm2(segments, voice_ref, out_folder, log, voice_cfg, max_
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_worker, job): job[0] for job in jobs}
         for future in as_completed(futures):
-            sid, success = future.result()
+            sid = futures[future]
+            try:
+                _, success = future.result()
+            except Exception as exc:
+                success = False
+                safe_log(log, f"   ❌ seg {sid:02d} worker error: {str(exc)[:70]}")
             completed += 1
             if success:
                 generated.append(sid)
@@ -274,7 +318,8 @@ def generate_voice_edge(segments, out_folder, log, missing_ids=None):
     voice = "en-US-JennyNeural"
     generated = []
 
-    targets = missing_ids if missing_ids else [int(s.get("segment_id", 0)) for s in segments]
+    targets = (missing_ids if missing_ids is not None
+               else [int(s.get("segment_id", 0)) for s in segments])
 
     for seg in segments:
         sid = int(seg.get("segment_id", 0))
@@ -291,6 +336,8 @@ def generate_voice_edge(segments, out_folder, log, missing_ids=None):
         success = False
         for attempt in range(1, 4):
             try:
+                _remove_file(out_mp3)
+
                 async def generate():
                     comm = edge_tts.Communicate(text, voice, rate="+0%", pitch="+0Hz")
                     await comm.save(out_mp3)
@@ -300,6 +347,7 @@ def generate_voice_edge(segments, out_folder, log, missing_ids=None):
                 if os.path.exists(out_mp3) and os.path.getsize(out_mp3) > 1500:
                     if not normalize_audio_lufs(out_mp3):
                         raise RuntimeError("Edge-TTS loudness normalization failed")
+                    _clear_silence_marker(out_mp3)
                     generated.append(sid)
                     success = True
                     log(f"    ✅ seg {sid:02d} (edge-tts attempt {attempt}, -16 LUFS)")
@@ -314,14 +362,21 @@ def generate_voice_edge(segments, out_folder, log, missing_ids=None):
 
         if not success:
             try:
-                subprocess.run([
+                _mark_silence(out_mp3)
+                silent = subprocess.run([
                     FFMPEG, "-y", "-f", "lavfi",
                     "-i", "anullsrc=channel_layout=mono:sample_rate=22050",
                     "-t", "4", "-c:a", "libmp3lame", "-b:a", "192k", out_mp3
                 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
-                if os.path.exists(out_mp3):
+                if (silent.returncode == 0 and os.path.exists(out_mp3)
+                        and os.path.getsize(out_mp3) > 1500):
                     log(f"    🔇 Created silent placeholder for seg {sid:02d}")
+                else:
+                    _remove_file(out_mp3)
+                    _clear_silence_marker(out_mp3)
             except Exception:
+                _remove_file(out_mp3)
+                _clear_silence_marker(out_mp3)
                 pass
 
         time.sleep(0.2)
@@ -349,15 +404,22 @@ def generate_voice(segments, voice_ref, out_folder, log, voice_cfg, max_workers=
         for sid in final_missing:
             out_mp3 = os.path.join(out_folder, f"{sid:02d}.mp3")
             try:
-                subprocess.run([
+                _mark_silence(out_mp3)
+                silent = subprocess.run([
                     FFMPEG, "-y", "-f", "lavfi",
                     "-i", "anullsrc=channel_layout=mono:sample_rate=22050",
                     "-t", "5", "-c:a", "libmp3lame", "-b:a", "192k", out_mp3
                 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
-                if os.path.exists(out_mp3):
+                if (silent.returncode == 0 and os.path.exists(out_mp3)
+                        and os.path.getsize(out_mp3) > 1500):
                     log(f"    🔇 silence for seg {sid:02d}")
                     generated.append(sid)
+                else:
+                    _remove_file(out_mp3)
+                    _clear_silence_marker(out_mp3)
             except Exception:
+                _remove_file(out_mp3)
+                _clear_silence_marker(out_mp3)
                 pass
 
     return len(generated) > 0

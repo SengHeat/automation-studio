@@ -116,6 +116,91 @@ def generate_story_json(title, premise, genre, duration_minutes,
     return data
 
 
+def _build_txt2json_prompt(plain_text, genre, language, segment_count):
+    """Return the Claude prompt for converting plain text to story JSON."""
+    narration_note = _GENRES.get(genre, "neutral, engaging narration")
+    emotion_options = ", ".join(EMOTION_DIRECTIONS.keys())
+    approx_words = len(plain_text.split())
+    approx_secs = max(30, int((approx_words / 130) * 60))
+    secs_per_seg = max(30, approx_secs // segment_count)
+
+    return f"""You are a story structure specialist.
+
+Convert the following plain-text story into a structured story JSON for an automated narration video system.
+
+IMPORTANT RULES:
+1. Output ONLY valid JSON — no markdown, no explanation, no code fences.
+2. Top-level structure: {{"title": "...", "language": "{language}", "segments": [...]}}
+3. Split the text into exactly {segment_count} segments at natural scene/paragraph breaks.
+4. Each segment MUST have:
+   - "segment_id": integer starting at 1
+   - "title": short scene title (3-6 words)
+   - "target_text": the exact portion of the original text for this segment (do NOT rewrite it)
+   - "duration": estimated range "M:SS-M:SS" based on reading pace (~130 wpm, ~{secs_per_seg}s per segment)
+   - "stock_query": 5-8 keyword visual description (English always, cinematic)
+   - "emotion": one of: {emotion_options}
+   - "control_instruction": "{narration_note}"
+5. Each segment's "target_text" must use the ORIGINAL author's words verbatim.
+6. The total of all "target_text" values must cover the entire input text.
+7. Extract a story title from the text (first heading or first sentence), or use "Untitled Story".
+
+PLAIN TEXT TO CONVERT:
+---
+{plain_text}
+---
+
+Generate the JSON now:"""
+
+
+def convert_text_to_story_json(plain_text, genre, language, segment_count, output_path, log,
+                               api_key=ANTHROPIC_KEY):
+    """Convert plain text into story JSON using Claude. Returns parsed dict or None."""
+    if not plain_text or not plain_text.strip():
+        log("❌ No text provided.")
+        return None
+    if not api_key:
+        log("❌ ANTHROPIC_KEY not set.")
+        return None
+    try:
+        import anthropic
+    except ImportError:
+        log("❌ anthropic package not installed.")
+        return None
+
+    prompt = _build_txt2json_prompt(plain_text.strip(), genre, language, int(segment_count))
+    word_count = len(plain_text.split())
+    log(f"  Calling Claude to convert {word_count} words → {segment_count} segments...")
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = message.content[0].text.strip()
+    except Exception as exc:
+        log(f"❌ Claude API error: {exc}")
+        return None
+
+    clean = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+    clean = re.sub(r"\s*```$", "", clean, flags=re.MULTILINE).strip()
+
+    try:
+        data = json.loads(clean)
+    except json.JSONDecodeError as exc:
+        log(f"❌ Claude returned invalid JSON: {exc}")
+        log(f"  Raw response (first 400 chars): {raw[:400]}")
+        return None
+
+    if not data.get("segments"):
+        log("❌ No segments in output.")
+        return None
+
+    log(f"  ✅ Converted to {len(data['segments'])} segments.")
+    return data
+
+
 def save_story_json(data, output_path, log):
     """Write story dict to a JSON file. Returns the path or None on error."""
     try:

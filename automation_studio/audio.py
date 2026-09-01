@@ -132,6 +132,15 @@ def mood_pause(ci, base, longx, short):
     return base
 
 
+def _estimate_segment_duration_ms(segment, wps=2.5):
+    """Estimate narration duration from word count (2.5 words/second)."""
+    text = (segment.get("target_text") or segment.get("narration") or "").strip()
+    words = len(text.split()) if text else 0
+    if words == 0:
+        return 3000
+    return max(3000, int((words / wps) * 1000))
+
+
 def build_ambience(total_ms):
     """Synthesize a dark ambient drone bed"""
     import numpy as np
@@ -250,13 +259,17 @@ def merge_voice(clips_folder, segments, out_voice, bg_music, bg_percent, log,
             timeline.append({"segment_id": sid, "start_ms": start, "end_ms": cursor})
             log(f"    ✅ seg {sid:02d} added to final mix")
         else:
-            log(f"    🔇 seg {sid:02d} missing/silent - adding pause")
-            pause = mood_pause(ci, 800, 1200, 400)
+            est_ms = _estimate_segment_duration_ms(seg)
+            log(f"    🔇 seg {sid:02d} missing/silent — inserting {est_ms/1000:.1f}s estimated silence")
             if not first:
+                pause = mood_pause(ci, 450, 800, 220)
                 voice += AudioSegment.silent(duration=pause)
                 cursor += pause
-            else:
-                first = False
+            start = cursor
+            voice += AudioSegment.silent(duration=est_ms)
+            cursor += est_ms
+            first = False
+            timeline.append({"segment_id": sid, "start_ms": start, "end_ms": cursor})
 
     if used == 0 and len(voice) == 0:
         log("❌ No usable voice clips.")
