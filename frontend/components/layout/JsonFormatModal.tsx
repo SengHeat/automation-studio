@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, ChevronDown, ChevronRight } from "lucide-react";
 
 type Section = {
@@ -172,17 +173,17 @@ export function JsonFormatModal({ onClose }: { onClose: () => void }) {
   const toggle = (id: string) =>
     setOpen((prev) => ({ ...prev, [id]: !prev[id] }));
 
-  return (
+  const drawer = (
     <>
       {/* Backdrop — click to close, does NOT cover the drawer */}
       <div
-        className="fixed inset-0 z-40 bg-black/40"
+        className="fixed inset-0 z-[9998] bg-black/40"
         onClick={onClose}
       />
 
       {/* Drawer — fixed to right edge, 40% width, full height, above backdrop */}
       <div
-        className="fixed top-0 right-0 z-50 h-full w-[40%] min-w-[360px] bg-[#0f1117] border-l border-gray-800 flex flex-col"
+        className="fixed top-0 right-0 z-[9999] h-full w-[40%] min-w-[360px] bg-[#0f1117] border-l border-gray-800 flex flex-col"
         style={{
           boxShadow: "-8px 0 40px rgba(0,0,0,0.6)",
           animation: "slideInRight 0.22s cubic-bezier(0.25,0.46,0.45,0.94)",
@@ -263,4 +264,6 @@ export function JsonFormatModal({ onClose }: { onClose: () => void }) {
       `}</style>
     </>
   );
+
+  return createPortal(drawer, document.body);
 }
