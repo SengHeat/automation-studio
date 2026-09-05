@@ -144,7 +144,7 @@ def generate_voice_voxcpm2(segments, voice_ref, out_folder, log, voice_cfg, max_
     for url in VOXCPM2_URLS:
         try:
             log(f"  Connecting to {url} ...")
-            client = Client(url, verbose=False)
+            client = Client(url, verbose=False, httpx_kwargs={"timeout": 300})
             log(f"  ✅ Connected to {url}")
             break
         except Exception as e:

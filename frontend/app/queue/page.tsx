@@ -1,6 +1,5 @@
 "use client";
 import { useState } from "react";
-import { BackButton } from "@/components/BackButton";
 import { LogStream } from "@/components/LogStream";
 import { scanQueue, clearQueue, startQueueRun, stopQueue } from "@/lib/api";
 
@@ -56,7 +55,6 @@ export default function QueuePage() {
 
   return (
     <main className="max-w-5xl mx-auto p-8">
-      <BackButton />
       <h1 className="text-2xl font-bold mb-1">🚀 Batch Queue</h1>
       <p className="text-gray-400 text-sm mb-6">
         Scan a folder, then run all stories sequentially while you sleep.

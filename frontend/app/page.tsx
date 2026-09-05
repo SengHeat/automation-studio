@@ -5,17 +5,17 @@ const MENU = [
   { href: "/studio",  icon: "🎙", label: "Generate Voice",  desc: "TTS narration pipeline" },
   { href: "/studio",  icon: "🎬", label: "Make Video",      desc: "Voice + cinematic renderer" },
   { href: "/eta",     icon: "⏱", label: "ETA Duration",    desc: "Estimate script reading time" },
-  { href: "/convert", icon: "📝", label: "Text → JSON",     desc: "Convert plain text to story" },
-  { href: "/history", icon: "📂", label: "History",         desc: "Browse & manage saved files" },
-  { href: "/youtube", icon: "📺", label: "YouTube Upload",  desc: "OAuth + direct video upload" },
-  { href: "/queue",   icon: "🚀", label: "Batch Queue",     desc: "Overnight multi-story render" },
+  // { href: "/convert", icon: "📝", label: "Text → JSON",     desc: "Convert plain text to story" },
+  // { href: "/history", icon: "📂", label: "History",         desc: "Browse & manage saved files" },
+  // { href: "/youtube", icon: "📺", label: "YouTube Upload",  desc: "OAuth + direct video upload" },
+  // { href: "/queue",   icon: "🚀", label: "Batch Queue",     desc: "Overnight multi-story render" },
 ];
 
 export default function Home() {
   return (
     <main className="min-h-screen p-8 max-w-5xl mx-auto">
       <div className="mb-10">
-        <h1 className="text-3xl font-bold text-white mb-1">🎙 FilesAtNightfall</h1>
+        <h1 className="text-3xl font-bold text-white mb-1">🎙 Mr.Midnight</h1>
         <p className="text-gray-400">Automation Studio — choose a tool to get started</p>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">

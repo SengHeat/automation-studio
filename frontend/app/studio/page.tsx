@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { BackButton } from "@/components/BackButton";
+import { useSearchParams } from "next/navigation";
 import { LogStream } from "@/components/LogStream";
 import { fetchConfig, startVoice, startVideo, exportSrt, generateChapters,
          startPreviewSegment, savePreset, loadPreset, type AppConfig } from "@/lib/api";
@@ -8,8 +8,12 @@ import { fetchConfig, startVoice, startVideo, exportSrt, generateChapters,
 type Tab = "voice" | "advanced" | "audio" | "video" | "subtitles" | "branding" | "tools";
 
 export default function StudioPage() {
+  const params = useSearchParams();
   const [cfg, setCfg] = useState<AppConfig | null>(null);
-  const [tab, setTab] = useState<Tab>("voice");
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = params.get("tab");
+    return (t === "video" ? "video" : "voice") as Tab;
+  });
   const [jobId, setJobId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [toolStatus, setToolStatus] = useState("");
@@ -198,7 +202,6 @@ export default function StudioPage() {
 
   return (
     <main className="max-w-6xl mx-auto p-8">
-      <BackButton />
       <h1 className="text-2xl font-bold mb-6">🎬 Voice & Video Studio</h1>
 
       <div className="grid md:grid-cols-[220px_1fr] gap-6">
@@ -381,7 +384,7 @@ export default function StudioPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Channel name</label>
-                  <input className="input" value={channel} onChange={e => setChannel(e.target.value)} placeholder="FilesAtNightfall" />
+                  <input className="input" value={channel} onChange={e => setChannel(e.target.value)} placeholder="Mr.Midnight" />
                 </div>
                 <div>
                   <label className="label">Channel corner</label>

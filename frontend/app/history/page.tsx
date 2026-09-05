@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { BackButton } from "@/components/BackButton";
 import { scanHistory, previewHistoryFile, deleteHistoryFile } from "@/lib/api";
 
 interface FileEntry { path: string; filename: string; title: string; language: string }
@@ -40,7 +39,6 @@ export default function HistoryPage() {
 
   return (
     <main className="max-w-5xl mx-auto p-8">
-      <BackButton />
       <h1 className="text-2xl font-bold mb-1">📂 History & File Manager</h1>
       <p className="text-gray-400 text-sm mb-6">Browse and manage saved Story JSON files.</p>
 
