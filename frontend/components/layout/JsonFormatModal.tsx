@@ -173,18 +173,20 @@ export function JsonFormatModal({ onClose }: { onClose: () => void }) {
     setOpen((prev) => ({ ...prev, [id]: !prev[id] }));
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      {/* Backdrop */}
+    <>
+      {/* Backdrop — click to close, does NOT cover the drawer */}
       <div
-        className="flex-1 bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 z-40 bg-black/40"
         onClick={onClose}
       />
 
-      {/* Drawer — 40% width, slides in from the right */}
+      {/* Drawer — fixed to right edge, 40% width, full height, above backdrop */}
       <div
-        className="w-[40%] min-w-[320px] h-full bg-[#0f1117] border-l border-gray-800 flex flex-col shadow-2xl
-                   animate-[slideInRight_0.25s_ease-out]"
-        style={{ animation: "slideInRight 0.25s ease-out" }}
+        className="fixed top-0 right-0 z-50 h-full w-[40%] min-w-[360px] bg-[#0f1117] border-l border-gray-800 flex flex-col"
+        style={{
+          boxShadow: "-8px 0 40px rgba(0,0,0,0.6)",
+          animation: "slideInRight 0.22s cubic-bezier(0.25,0.46,0.45,0.94)",
+        }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
@@ -198,9 +200,9 @@ export function JsonFormatModal({ onClose }: { onClose: () => void }) {
           </div>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-white transition-colors p-1"
+            className="w-7 h-7 flex items-center justify-center rounded-md border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
           >
-            <X size={18} />
+            <X size={14} />
           </button>
         </div>
 
@@ -219,9 +221,9 @@ export function JsonFormatModal({ onClose }: { onClose: () => void }) {
                   {sec.title}
                 </span>
                 {open[sec.id] ? (
-                  <ChevronDown size={15} className="text-gray-500 shrink-0" />
+                  <ChevronDown size={14} className="text-gray-500 shrink-0" />
                 ) : (
-                  <ChevronRight size={15} className="text-gray-500 shrink-0" />
+                  <ChevronRight size={14} className="text-gray-500 shrink-0" />
                 )}
               </button>
 
@@ -255,10 +257,10 @@ export function JsonFormatModal({ onClose }: { onClose: () => void }) {
 
       <style>{`
         @keyframes slideInRight {
-          from { transform: translateX(100%); opacity: 0; }
-          to   { transform: translateX(0);    opacity: 1; }
+          from { transform: translateX(100%); }
+          to   { transform: translateX(0); }
         }
       `}</style>
-    </div>
+    </>
   );
 }
