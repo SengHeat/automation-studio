@@ -21,9 +21,11 @@ interface ParsedResult {
   segments: number;
   script: string;
   wpm: number;
+  cpm: number;
+  isKhmerCjk: boolean;
 }
 
-function parseEtaResult(total: string, breakdown: string, wpm: number): ParsedResult | null {
+function parseEtaResult(total: string, breakdown: string, wpm: number, cpm: number): ParsedResult | null {
   const tm = total.match(/(\d+)\s*min\s*(\d+)\s*sec/);
   if (!tm) return null;
   const mins = +tm[1], secs = +tm[2];
@@ -35,11 +37,11 @@ function parseEtaResult(total: string, breakdown: string, wpm: number): ParsedRe
     if (m) { words += +m[1]; chars += +m[2]; segments++; }
   }
 
-  // Detect script: if avg chars/word ratio > 2 it's likely CJK
   const avgCpw = words > 0 ? chars / words : 0;
-  const script = avgCpw > 4 ? "CJK / Khmer" : "Latin";
+  const isKhmerCjk = avgCpw > 4;
+  const script = isKhmerCjk ? "Khmer / CJK" : "Latin / English";
 
-  return { mins, secs, totalSecs, words, chars, segments, script, wpm };
+  return { mins, secs, totalSecs, words, chars, segments, script, wpm, cpm, isKhmerCjk };
 }
 
 interface FormatCheck { label: string; limit: number; unit: string }
@@ -96,7 +98,7 @@ export default function EtaPage() {
       try {
         const res = await estimateEta({ text, wpm, cpm });
         setRawBreakdown(res.breakdown);
-        setResult(parseEtaResult(res.total, res.breakdown, wpm));
+        setResult(parseEtaResult(res.total, res.breakdown, wpm, cpm));
       } catch { /* ignore */ }
       setBusy(false);
     }, 600);
@@ -109,7 +111,7 @@ export default function EtaPage() {
     setBusy(true);
     const res = await estimateEta({ text, wpm, cpm });
     setRawBreakdown(res.breakdown);
-    setResult(parseEtaResult(res.total, res.breakdown, wpm));
+    setResult(parseEtaResult(res.total, res.breakdown, wpm, cpm));
     setBusy(false);
   }
 
@@ -217,8 +219,30 @@ export default function EtaPage() {
                 <p className="text-6xl font-bold text-gray-100 tracking-tight">
                   {result.mins}:{String(result.secs).padStart(2, "0")}
                 </p>
-                <p className="text-xs text-gray-500 mt-2">min : sec · at {result.wpm} wpm</p>
+                <p className="text-xs text-gray-500 mt-2">
+                  min : sec · at{" "}
+                  {result.isKhmerCjk
+                    ? <><span className="text-yellow-400 font-mono">{result.cpm} cpm</span> (Khmer/CJK)</>
+                    : <><span className="text-blue-400 font-mono">{result.wpm} wpm</span> (English)</>
+                  }
+                </p>
               </div>
+
+              {/* Khmer/CJK notice */}
+              {result.isKhmerCjk && (
+                <div className="rounded-lg border border-yellow-800/50 bg-yellow-950/30 px-4 py-3 flex gap-3 items-start">
+                  <span className="text-yellow-400 text-base shrink-0">⚠</span>
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-medium text-yellow-300">Khmer / CJK Script Detected</p>
+                    <p className="text-[11px] text-yellow-500 leading-relaxed">
+                      ប្រើ <strong>{result.cpm} chars/min</strong> ជំនួស wpm — ព្រោះ Khmer មិនគណនា​ ដោយ word ។
+                    </p>
+                    <p className="text-[11px] text-yellow-600">
+                      Using character rate ({result.cpm} cpm), not word rate. Adjust the Chars/min slider for accuracy.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Stats row */}
               <div className="grid grid-cols-3 gap-2">
@@ -230,8 +254,10 @@ export default function EtaPage() {
                   <p className="text-2xl font-bold text-gray-100">{result.chars.toLocaleString()}</p>
                   <p className="text-[10px] text-gray-500 mt-1">Characters</p>
                 </div>
-                <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 text-center">
-                  <p className="text-xl font-bold text-gray-100">{result.script}</p>
+                <div className={`rounded-xl border p-4 text-center ${result.isKhmerCjk ? "border-yellow-800/40 bg-yellow-950/20" : "border-gray-800 bg-gray-900/60"}`}>
+                  <p className={`text-sm font-bold ${result.isKhmerCjk ? "text-yellow-400" : "text-gray-100"}`}>
+                    {result.isKhmerCjk ? "Khmer / CJK" : "Latin"}
+                  </p>
                   <p className="text-[10px] text-gray-500 mt-1">Script detected</p>
                 </div>
               </div>
