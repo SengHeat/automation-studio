@@ -516,9 +516,13 @@ def _make_story_card(width, height, fps, duration, story_number, author, output,
         command += audio_input + ["-t", str(duration),
                                   "-vf", "fade=t=in:st=0:d=0.8,fade=t=out:st=" +
                                   str(max(0.0, duration - 0.7)) + ":d=0.7"]
+        silence_lead = 1.5  # seconds of silence before background music kicks in
         if has_sound:
-            command += ["-af", "volume=0.42,afade=t=in:st=0:d=0.5,afade=t=out:st=" +
-                        str(max(0.0, duration - 0.8)) + ":d=0.8"]
+            command += ["-af",
+                        f"volume=0.42,"
+                        f"adelay={int(silence_lead * 1000)}|{int(silence_lead * 1000)},"
+                        f"afade=t=in:st={silence_lead:.1f}:d=0.5,"
+                        f"afade=t=out:st={max(0.0, duration - 0.8):.3f}:d=0.8"]
         command += ["-c:v", "libx264", "-preset", "fast", "-crf", "12",
                     "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "256k",
                     "-ar", "48000", "-ac", "2",
