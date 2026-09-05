@@ -173,13 +173,18 @@ export function JsonFormatModal({ onClose }: { onClose: () => void }) {
     setOpen((prev) => ({ ...prev, [id]: !prev[id] }));
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex">
+      {/* Backdrop */}
       <div
-        className="relative bg-[#0f1117] border border-gray-800 rounded-xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        className="flex-1 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Drawer — 40% width, slides in from the right */}
+      <div
+        className="w-[40%] min-w-[320px] h-full bg-[#0f1117] border-l border-gray-800 flex flex-col shadow-2xl
+                   animate-[slideInRight_0.25s_ease-out]"
+        style={{ animation: "slideInRight 0.25s ease-out" }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
@@ -188,25 +193,24 @@ export function JsonFormatModal({ onClose }: { onClose: () => void }) {
               📄 Story JSON Format Guide
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              ការណែនាំ​ទ្រង់ទ្រាយ JSON — Whispered Confessions Automation Studio
+              ការណែនាំ​ទ្រង់ទ្រាយ JSON — Whispered Confessions
             </p>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-white transition-colors"
+            className="text-gray-500 hover:text-white transition-colors p-1"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-2">
+        <div className="overflow-y-auto flex-1 px-4 py-4 space-y-2">
           {SECTIONS.map((sec) => (
             <div
               key={sec.id}
               className="border border-gray-800 rounded-lg overflow-hidden"
             >
-              {/* Section header */}
               <button
                 className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-800/50 transition-colors"
                 onClick={() => toggle(sec.id)}
@@ -221,14 +225,11 @@ export function JsonFormatModal({ onClose }: { onClose: () => void }) {
                 )}
               </button>
 
-              {/* Section body */}
               {open[sec.id] && (
                 <div className="px-4 pb-4 space-y-3 bg-gray-900/30">
-                  {/* Khmer explanation */}
                   <p className="text-sm text-blue-300 leading-relaxed pt-2">
                     {sec.kh}
                   </p>
-                  {/* Code block */}
                   <pre className="text-xs text-green-300 bg-black/50 rounded-lg p-3 overflow-x-auto leading-relaxed whitespace-pre-wrap font-mono border border-gray-800">
                     {sec.content}
                   </pre>
@@ -251,6 +252,13 @@ export function JsonFormatModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
+
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translateX(100%); opacity: 0; }
+          to   { transform: translateX(0);    opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
