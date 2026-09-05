@@ -5,11 +5,11 @@ import {
   fetchConfig, startVideo, savePreset, loadPreset,
   exportSrt, generateChapters, fetchTestStoryFixture, type AppConfig,
 } from "@/lib/api";
-import { Clapperboard, Subtitles, Paintbrush, Wrench, Menu } from "lucide-react";
+import { Clapperboard, Subtitles, Paintbrush, Wrench, Menu, Bug } from "lucide-react";
 import { useSidebar } from "@/components/ui/Sidebar";
 import { useNavigationGuard } from "@/lib/useNavigationGuard";
 
-type Tab = "video" | "subtitles" | "branding" | "tools";
+type Tab = "video" | "subtitles" | "branding" | "tools" | "debug";
 type Ratio = "16:9" | "9:16" | "1:1";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -17,6 +17,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "subtitles", label: "Subtitles", icon: <Subtitles size={12} /> },
   { id: "branding",  label: "Branding",  icon: <Paintbrush size={12} /> },
   { id: "tools",     label: "Tools",     icon: <Wrench size={12} /> },
+  { id: "debug",     label: "Debug",     icon: <Bug size={12} /> },
 ];
 
 function Section({ num, title, children }: { num: string; title: string; children: React.ReactNode }) {
@@ -54,6 +55,9 @@ export default function VideoPage() {
   const [busy, setBusy] = useState(false);
   const [toolStatus, setToolStatus] = useState("");
   const [chapters, setChapters] = useState("");
+  const [debugJobId, setDebugJobId] = useState<string | null>(null);
+  const [debugPath, setDebugPath] = useState("fixtures/test_story_home_invasion.json");
+  const [debugVideoOnly, setDebugVideoOnly] = useState(false);
   const [ratio, setRatio] = useState<Ratio>("16:9");
   const [activeSegment, setActiveSegment] = useState(0);
   const [loadedFiles, setLoadedFiles] = useState<File[]>([]);
@@ -139,6 +143,39 @@ export default function VideoPage() {
       storyJsonRef.current.files = dt.files;
       setLoadedFiles(files);
     }
+  }
+
+  async function runDebugVideo() {
+    if (!debugPath.trim()) { alert("Enter a server-side JSON path."); return; }
+    setBusy(true);
+    setDebugJobId(null);
+    const f = new FormData();
+    f.append("json_path", debugPath.trim());
+    f.append("voice_source", "generate");
+    f.append("video_only", String(debugVideoOnly));
+    // fast low-quality settings
+    f.append("resolution", "640x360");
+    f.append("fps", "20");
+    f.append("crf", "28");
+    f.append("transition_duration", "0.5");
+    f.append("effect_style", effectStyle);
+    f.append("make_thumbnail", "false");
+    f.append("use_ai_images", "false");
+    f.append("voice_out", "voice_final.mp3");
+    f.append("segments_output", "segments_audio");
+    f.append("story_authors", storyAuthors);
+    f.append("story_card_duration", "3");
+    f.append("show_title", "false");
+    f.append("use_logo", "false");
+    f.append("logo_corner", "bottom-right");
+    f.append("channel", "");
+    f.append("channel_corner", "top-right");
+    f.append("enable_subtitles", "false");
+    f.append("subtitle_size", "28");
+    f.append("subtitle_position", "bottom");
+    f.append("video_out", "");
+    const jid = await startVideo(f);
+    setDebugJobId(jid);
   }
 
   async function runVideo() {
@@ -438,6 +475,72 @@ export default function VideoPage() {
                   </div>
                 </div>
                 {toolStatus && <p className="text-xs text-gray-300">{toolStatus}</p>}
+              </Section>
+            )}
+
+            {tab === "debug" && (
+              <Section num="" title="Debug Video">
+                {/* Description */}
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Run a real render from a server-side JSON path. Uses fast settings (640×360, CRF 28) so you get results quickly without touching the main Video tab.
+                </p>
+
+                {/* Path input */}
+                <div>
+                  <label className="label">Server JSON path</label>
+                  <input
+                    className="input font-mono text-xs"
+                    value={debugPath}
+                    onChange={e => setDebugPath(e.target.value)}
+                    spellCheck={false}
+                    placeholder="fixtures/test_story_home_invasion.json"
+                  />
+                </div>
+
+                {/* Mode toggle */}
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={debugVideoOnly}
+                    onChange={e => setDebugVideoOnly(e.target.checked)}
+                  />
+                  Skip voice — placeholder silent audio only
+                </label>
+
+                {/* Quick-path buttons */}
+                <div>
+                  <p className="text-[11px] text-gray-600 mb-1.5">Quick paths</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: "Home Invasion", path: "fixtures/test_story_home_invasion.json" },
+                    ].map(({ label, path }) => (
+                      <button
+                        key={path}
+                        onClick={() => setDebugPath(path)}
+                        className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
+                          debugPath === path
+                            ? "bg-orange-600/20 border-orange-600 text-orange-300"
+                            : "border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Run button */}
+                <button
+                  onClick={runDebugVideo}
+                  disabled={busy}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-50 px-4 py-2.5 text-sm font-semibold text-white transition-colors"
+                >
+                  <Bug size={14} />
+                  {debugVideoOnly ? "Debug — Structure Only" : "Debug — Full Render"}
+                </button>
+
+                {/* Log stream inline */}
+                <LogStream jobId={debugJobId} onDone={() => setBusy(false)} />
               </Section>
             )}
           </div>
