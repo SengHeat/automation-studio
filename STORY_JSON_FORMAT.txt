@@ -1,0 +1,256 @@
+===============================================================
+  WHISPERED CONFESSIONS — STORY JSON FORMAT GUIDE
+===============================================================
+  This file explains the full JSON structure used to generate
+  voice narration and video in Automation Studio.
+---------------------------------------------------------------
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TOP-LEVEL STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+  "project":  { ... },     ← metadata about the video
+  "starting": { ... },     ← optional intro narration (rendered first)
+  "stories":  [ ... ],     ← one or more horror stories
+  "ending":   { ... }      ← optional end screen narration (rendered last)
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. "project" — VIDEO METADATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"project": {
+  "title":            "3 True Home Invasion Horror Stories",
+  "youtube_title":    "3 TRUE Horror Stories About Someone Already Inside",
+  "thumbnail_text":   "HE WAS ALREADY INSIDE",
+  "channel":          "Whispered Confessions",
+  "format":           "Long-form horror narration",
+  "language":         "English",
+  "voice_model":      "VoxCPM2",
+  "estimated_duration": "26-28 minutes",
+  "story_count":      3,
+  "segment_count":    34,
+  "style":            "Slow-burn, realistic, first-person horror",
+  "music":            "None",
+  "sound_effects":    "None",
+  "narration_notes":  "Use a natural, calm, slow horror delivery...",
+  "category":         "Home Invasion / Real Horror Stories",
+  "status":           "draft"
+}
+
+KEY EXPLANATIONS:
+  title            — Internal project name (shown in studio history)
+  youtube_title    — Suggested YouTube video title
+  thumbnail_text   — Bold text overlaid on the thumbnail image
+  channel          — Channel watermark shown on the video
+  voice_model      — TTS engine to use (currently: VoxCPM2)
+  estimated_duration — Rough runtime target (for planning only)
+  story_count      — How many stories are in the "stories" array
+  segment_count    — Total number of segments across all stories
+  narration_notes  — Instructions given to the voice AI for tone/style
+                     (applied to every segment unless overridden)
+  status           — "draft" or "ready" (informational only)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  2. "starting" — INTRO NARRATION  (optional)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"starting": {
+  "title":        "Intro",
+  "duration":     "0:00-0:30",
+  "visual_prompt": "A dark house at night, shadows shifting.",
+  "narration":    "Every house has a version of itself that only exists
+                   after dark..."
+}
+
+KEY EXPLANATIONS:
+  title        — Label for this segment (shown in logs)
+  duration     — Approximate time range in MM:SS-MM:SS format
+                 (used only as a hint; actual duration = voice length)
+  visual_prompt — Description of the video footage for this segment.
+                  Used to search Pexels stock video automatically.
+  narration    — The spoken text. This is what gets sent to the voice AI.
+
+NOTE: If "starting" is present, it becomes segment #1 in the final video.
+      If omitted, the first story segment plays first.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  3. "stories" — STORY ARRAY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"stories": [
+  {
+    "story_number":   1,
+    "title":          "The Den Light",
+    "estimated_duration": "0:00-8:13",
+    "youtube_title":  "The Den Light Kept Turning Off While I Sat 12 Feet Away",
+    "thumbnail_text": "SOMEONE WAS IN THE HOUSE",
+    "characters":     ["Narrator"],
+    "viewer_question": "Have you ever noticed something small was wrong...",
+    "segments": [ ... ]
+  },
+  { ... },
+  { ... }
+]
+
+KEY EXPLANATIONS:
+  story_number     — Order of the story (1, 2, 3...)
+  title            — Short story name (shown in studio and logs)
+  estimated_duration — Rough time range this story covers in the video
+  youtube_title    — Suggested chapter title for YouTube description
+  thumbnail_text   — Story-specific thumbnail text (informational)
+  characters       — List of characters/narrators in this story
+  viewer_question  — CTA comment prompt to add at the end of this story
+  segments         — Array of narration segments (see section 4)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  4. SEGMENT — INSIDE stories[].segments[]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+  "segment":       1,
+  "duration":      "0:00-0:24",
+  "visual_prompt": "A snow-covered cabin sits alone at the edge of a
+                    quiet winter town, smoke rising from the chimney.",
+  "narration":     "I was spending the weekend alone at my cabin-style
+                    house on the edge of town..."
+}
+
+KEY EXPLANATIONS:
+  segment        — Segment number within this story (1, 2, 3...)
+                   Does NOT need to be globally unique.
+  duration       — Time range in MM:SS-MM:SS format.
+                   Used to align video clips with the voice timeline.
+                   Actual duration is driven by real narration length.
+  visual_prompt  — What the video should show during this segment.
+                   The studio uses this to:
+                     a) Search Pexels for matching stock footage
+                     b) Generate an AI image (DALL-E 3) if no stock found
+                   Be descriptive — "dark hallway, single flickering lamp,
+                   shadow at the far end" works better than "scary hall".
+  narration      — The full spoken text for this segment.
+                   Sent to VoxCPM2 for voice generation.
+                   Keep each segment under ~90 seconds of spoken content
+                   for best voice quality.
+
+OPTIONAL SEGMENT KEYS:
+  stock_query      — Override the Pexels search term (otherwise derived
+                     from visual_prompt automatically)
+  control_instruction — Override the narration tone for this segment only
+                        (overrides project.narration_notes for this segment)
+  image_or_video   — Hardcoded path or URL to a specific media file.
+                     If provided, skips stock download entirely.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  5. "ending" — END SCREEN NARRATION  (optional)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"ending": {
+  "title":        "End Screen",
+  "duration":     "26:23-28:16",
+  "visual_prompt": "A dark still hallway fading slowly to black.",
+  "narration":    "Three houses. Three ordinary nights that stopped
+                   being ordinary. If this story kept you up tonight,
+                   the next one is going to be worse. Watch it here."
+}
+
+KEY EXPLANATIONS:
+  title        — Label for this segment (shown in logs)
+  duration     — Approximate time range (informational)
+  visual_prompt — Video footage for the end screen segment
+  narration    — Spoken closing text — usually a recap + CTA
+                 ("watch next", "subscribe", etc.)
+
+NOTE: If "ending" is present, it is always the last segment rendered.
+      YouTube end screen cards (the clickable overlays) are added
+      separately in YouTube Studio — this is only the narration + video.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FULL MINIMAL EXAMPLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+  "project": {
+    "title": "1 True Horror Story",
+    "channel": "Whispered Confessions",
+    "voice_model": "VoxCPM2",
+    "narration_notes": "Slow, calm, first-person horror delivery.",
+    "status": "draft"
+  },
+
+  "starting": {
+    "title": "Intro",
+    "duration": "0:00-0:20",
+    "visual_prompt": "A quiet suburban street at night.",
+    "narration": "What I am about to tell you happened in my own home.
+                  I still do not have a good explanation for it."
+  },
+
+  "stories": [
+    {
+      "story_number": 1,
+      "title": "The Upstairs Room",
+      "segments": [
+        {
+          "segment": 1,
+          "duration": "0:20-1:00",
+          "visual_prompt": "Empty bedroom, single lamp on, curtains closed.",
+          "narration": "The house had been empty for six months before
+                        we moved in. The real estate agent said the
+                        previous family relocated for work."
+        },
+        {
+          "segment": 2,
+          "duration": "1:00-1:45",
+          "visual_prompt": "A dark staircase leading up to a closed door.",
+          "narration": "On our third night there, I heard footsteps
+                        coming from the room directly above the bedroom.
+                        We do not have an upstairs."
+        }
+      ]
+    }
+  ],
+
+  "ending": {
+    "title": "End Screen",
+    "duration": "1:45-2:15",
+    "visual_prompt": "Dark hallway fading to black.",
+    "narration": "That room is still in the house. We keep the door
+                  locked now. If this kept you up, the next one is worse."
+  }
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  RENDER ORDER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  [starting]  →  [story 1 segments]  →  [story 2 segments]
+  →  [story 3 segments]  →  [ending]
+
+  Each block is optional except stories[].segments which must
+  have at least one entry with a non-empty "narration" field.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TIPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  - Keep each segment narration under ~90 seconds for best voice quality.
+  - Write visual_prompt as a camera description, not a story summary.
+    Good:  "Close-up of a light switch in the down position, hallway dark."
+    Bad:   "The part where the light turns off."
+  - duration is a planning guide only. The real video length = voice length.
+  - Use "stock_query" to override Pexels search if the auto result is wrong.
+  - Multiple stories in one file = compilation video with story cards.
+  - Single story in one file = standalone video, no story cards.
+
+===============================================================
