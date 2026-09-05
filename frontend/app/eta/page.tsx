@@ -25,7 +25,7 @@ interface ParsedResult {
   isKhmerCjk: boolean;
 }
 
-function parseEtaResult(total: string, breakdown: string, wpm: number, cpm: number): ParsedResult | null {
+function parseEtaResult(total: string, breakdown: string, rawText: string, wpm: number, cpm: number): ParsedResult | null {
   const tm = total.match(/(\d+)\s*min\s*(\d+)\s*sec/);
   if (!tm) return null;
   const mins = +tm[1], secs = +tm[2];
@@ -37,8 +37,8 @@ function parseEtaResult(total: string, breakdown: string, wpm: number, cpm: numb
     if (m) { words += +m[1]; chars += +m[2]; segments++; }
   }
 
-  const avgCpw = words > 0 ? chars / words : 0;
-  const isKhmerCjk = avgCpw > 4;
+  // Detect by actual Unicode ranges in the source text — never misfire on English
+  const isKhmerCjk = /[\u1780-\u17FF\u3000-\u9FFF\uAC00-\uD7AF]/.test(rawText);
   const script = isKhmerCjk ? "Khmer / CJK" : "Latin / English";
 
   return { mins, secs, totalSecs, words, chars, segments, script, wpm, cpm, isKhmerCjk };
@@ -98,7 +98,7 @@ export default function EtaPage() {
       try {
         const res = await estimateEta({ text, wpm, cpm });
         setRawBreakdown(res.breakdown);
-        setResult(parseEtaResult(res.total, res.breakdown, wpm, cpm));
+        setResult(parseEtaResult(res.total, res.breakdown, text, wpm, cpm));
       } catch { /* ignore */ }
       setBusy(false);
     }, 600);
@@ -111,7 +111,7 @@ export default function EtaPage() {
     setBusy(true);
     const res = await estimateEta({ text, wpm, cpm });
     setRawBreakdown(res.breakdown);
-    setResult(parseEtaResult(res.total, res.breakdown, wpm, cpm));
+    setResult(parseEtaResult(res.total, res.breakdown, text, wpm, cpm));
     setBusy(false);
   }
 
