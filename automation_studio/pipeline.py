@@ -37,6 +37,20 @@ def _flatten_segments(data):
             segment.setdefault("control_instruction", narration_note)
             flat.append(segment)
             global_id += 1
+    ending = data.get("ending")
+    if isinstance(ending, dict):
+        closing_text = ending.get("narration") or ending.get("target_text", "")
+        if closing_text:
+            flat.append({
+                "segment_id": global_id,
+                "title": ending.get("title", "End Screen"),
+                "duration": ending.get("duration", ""),
+                "stock_query": "dark night horror end screen subscribe",
+                "video_feed_description": ending.get("visual_prompt", "A dark, still hallway fading to black."),
+                "control_instruction": "Slow, calm horror closing narration.",
+                "target_text": closing_text,
+                "narration": closing_text,
+            })
     return flat
 
 
