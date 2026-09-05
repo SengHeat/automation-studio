@@ -61,6 +61,7 @@ export default function VideoPage() {
 
   const [voiceSource, setVoiceSource] = useState<"existing" | "generate" | "test">("generate");
   const [fixtureLoading, setFixtureLoading] = useState(false);
+  const [jsonPath, setJsonPath] = useState("");
   const [storyAuthors, setStoryAuthors] = useState("Anonymous");
   const [storyCardDuration, setStoryCardDuration] = useState(5);
   const [voiceOut, setVoiceOut] = useState("voice_final.mp3");
@@ -141,10 +142,13 @@ export default function VideoPage() {
   }
 
   async function runVideo() {
-    if (!storyJsonRef.current?.files?.length) { alert("Choose a Story JSON file."); return; }
+    const hasFile = (storyJsonRef.current?.files?.length ?? 0) > 0;
+    const hasPath = jsonPath.trim().length > 0;
+    if (!hasFile && !hasPath) { alert("Choose a Story JSON file or enter a server-side JSON path."); return; }
     setBusy(true);
     const f = new FormData();
-    Array.from(storyJsonRef.current.files).forEach(file => f.append("story_json", file));
+    if (hasFile) Array.from(storyJsonRef.current!.files!).forEach(file => f.append("story_json", file));
+    if (hasPath) f.append("json_path", jsonPath.trim());
     if (bgMusicRef.current?.files?.[0]) f.append("bg_music", bgMusicRef.current.files[0]);
     if (logoRef.current?.files?.[0]) f.append("logo", logoRef.current.files[0]);
     const effectiveVoiceSource = voiceSource === "test" ? "generate" : voiceSource;
@@ -240,6 +244,23 @@ export default function VideoPage() {
           <div className="flex-1 overflow-y-auto p-5 space-y-4">
             {tab === "video" && (<>
               <Section num="01" title="Source">
+                {/* Server-side path input */}
+                <div>
+                  <label className="label">Server JSON path</label>
+                  <input
+                    className="input font-mono text-xs"
+                    value={jsonPath}
+                    onChange={e => setJsonPath(e.target.value)}
+                    placeholder="e.g. fixtures/test_story_home_invasion.json"
+                    spellCheck={false}
+                  />
+                  {jsonPath.trim() && (
+                    <p className="text-[11px] text-green-400 mt-1">
+                      ✓ Will use server path — no upload needed
+                    </p>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-600 -mt-1">— or upload a file —</p>
                 <div
                   onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                   onDragLeave={() => setDragOver(false)}

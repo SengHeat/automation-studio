@@ -262,7 +262,8 @@ async def story_convert(body: ConvertTextBody):
 
 @app.post("/api/voice")
 async def run_voice(
-    story_json: list[UploadFile] = File(...),
+    story_json: list[UploadFile] = File(default=[]),
+    json_path: str = Form(""),
     voice_source: str = Form("generate"),
     voice_preset: str = Form("Balanced Neutral"),
     voice_style: str = Form("Balanced"),
@@ -282,7 +283,15 @@ async def run_voice(
     bg_music: Optional[UploadFile] = File(None),
 ):
     jid = _new_job()
-    json_paths = [await _save_upload(f) for f in story_json]
+    if json_path.strip():
+        resolved = os.path.abspath(json_path.strip())
+        if not os.path.exists(resolved):
+            raise HTTPException(status_code=400, detail=f"JSON path not found: {resolved}")
+        json_paths = [resolved]
+    elif story_json:
+        json_paths = [await _save_upload(f) for f in story_json]
+    else:
+        raise HTTPException(status_code=422, detail="Provide either story_json file or json_path")
     voice_ref_path = await _save_upload(voice_ref) if voice_ref else DEFAULT_VOICE_REF or ""
     voice_file_path = await _save_upload(voice_file) if voice_file else ""
     bg_music_path = await _save_upload(bg_music) if bg_music else ""
@@ -325,7 +334,8 @@ async def run_voice(
 
 @app.post("/api/video")
 async def run_video(
-    story_json: list[UploadFile] = File(...),
+    story_json: list[UploadFile] = File(default=[]),
+    json_path: str = Form(""),
     voice_source: str = Form("generate"),
     voice_preset: str = Form("Balanced Neutral"),
     voice_style: str = Form("Balanced"),
@@ -366,7 +376,15 @@ async def run_video(
     logo: Optional[UploadFile] = File(None),
 ):
     jid = _new_job()
-    json_paths = [await _save_upload(f) for f in story_json]
+    if json_path.strip():
+        resolved = os.path.abspath(json_path.strip())
+        if not os.path.exists(resolved):
+            raise HTTPException(status_code=400, detail=f"JSON path not found: {resolved}")
+        json_paths = [resolved]
+    elif story_json:
+        json_paths = [await _save_upload(f) for f in story_json]
+    else:
+        raise HTTPException(status_code=422, detail="Provide either story_json file or json_path")
     voice_ref_path = await _save_upload(voice_ref) if voice_ref else DEFAULT_VOICE_REF or ""
     voice_file_path = await _save_upload(voice_file) if voice_file else ""
     bg_music_path = await _save_upload(bg_music) if bg_music else ""
