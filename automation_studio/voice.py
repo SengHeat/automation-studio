@@ -118,8 +118,12 @@ def generate_single_segment_retry(client, has_ref, seg, full_ci, out_mp3, voice_
         except Exception as e:
             error = str(e)
             if attempt < max_retries:
-                delay = min(20.0, (2 ** attempt) + random.uniform(0.5, 2.0))
-                safe_log(log, f"    ⚠️ {display} attempt {attempt}: {error[:45]} → retry in {delay:.1f}s")
+                is_dns = any(k in error for k in ("Errno 8", "nodename", "servname", "Name or service"))
+                # DNS failures need much longer recovery time than transient API errors
+                base_delay = 30.0 if is_dns else (2 ** attempt)
+                delay = min(60.0, base_delay + random.uniform(0.5, 3.0))
+                safe_log(log, f"    ⚠️ {display} attempt {attempt}: {error[:45]} → retry in {delay:.1f}s"
+                              + (" (DNS — waiting for recovery)" if is_dns else ""))
                 time.sleep(delay)
             else:
                 safe_log(log, f"   ❌ {display}: {error[:70]}")
@@ -140,20 +144,24 @@ def generate_voice_voxcpm2(segments, voice_ref, out_folder, log, voice_cfg, max_
 
     os.makedirs(out_folder, exist_ok=True)
 
-    client = None
-    for url in VOXCPM2_URLS:
-        try:
-            log(f"  Connecting to {url} ...")
-            client = Client(url, verbose=False, httpx_kwargs={"timeout": 300})
-            log(f"  ✅ Connected to {url}")
-            break
-        except Exception as e:
-            log(f"  ⚠️ Failed: {str(e)[:80]}")
-            continue
+    def _connect():
+        for url in VOXCPM2_URLS:
+            try:
+                log(f"  Connecting to {url} ...")
+                c = Client(url, verbose=False, httpx_kwargs={"timeout": 300})
+                log(f"  ✅ Connected to {url}")
+                return c
+            except Exception as e:
+                log(f"  ⚠️ Failed: {str(e)[:80]}")
+        return None
 
+    client = _connect()
     if client is None:
         log("❌ Could not connect to VoxCPM2. Will try fallback.")
         return []
+
+    # Mutable so the recovery pass can swap in a fresh client after DNS drop
+    active_client = [client]
 
     has_ref = bool(voice_ref and os.path.exists(voice_ref))
     if has_ref:
@@ -241,7 +249,7 @@ def generate_voice_voxcpm2(segments, voice_ref, out_folder, log, voice_cfg, max_
             part = out_mp3 + f".part{index:02d}.mp3"
             label = f"seg {sid:02d} chunk {index}/{len(chunks)}"
             if not generate_single_segment_retry(
-                    client, active_has_ref[0], seg, full_ci, part, active_ref[0],
+                    active_client[0], active_has_ref[0], seg, full_ci, part, active_ref[0],
                     cfg_value, do_normalize, denoise, log, max_retries=retries,
                     text_override=chunk, label=label):
                 for made in parts:
@@ -293,9 +301,17 @@ def generate_voice_voxcpm2(segments, voice_ref, out_folder, log, voice_cfg, max_
     failed_jobs = [job for job in jobs if job[0] not in generated]
     if failed_jobs:
         log(f"  🩹 Recovery pass: {len(failed_jobs)} failed segment(s), one at a time...")
-        time.sleep(3)
+        log("  ⏳ Waiting 30s for network/DNS to stabilize...")
+        time.sleep(30)
+        # Reconnect with a fresh client — old client may have stale DNS state
+        fresh = _connect()
+        if fresh:
+            active_client[0] = fresh
+            log("  🔌 Reconnected to VoxCPM2 for recovery pass")
+        else:
+            log("  ⚠️ Could not reconnect — retrying with existing client")
         for job in failed_jobs:
-            sid, success = _generate_job(job, retries=2)
+            sid, success = _generate_job(job, retries=4)
             if success:
                 generated.append(sid)
 
@@ -387,6 +403,11 @@ def generate_voice_edge(segments, out_folder, log, missing_ids=None):
 
 def generate_voice(segments, voice_ref, out_folder, log, voice_cfg, max_workers=2):
     """Generate voice - try VoxCPM2 parallel first, then edge-tts for missing ones"""
+    try:
+        import edge_tts  # noqa: F401
+    except ImportError:
+        log("⚠️  edge-tts is NOT installed — if VoxCPM2 fails, segments will be silent gaps.")
+        log("    Fix: pip install edge-tts")
     log("  Attempting VoxCPM2 (parallel)...")
     generated = generate_voice_voxcpm2(segments, voice_ref, out_folder, log, voice_cfg, max_workers)
 
