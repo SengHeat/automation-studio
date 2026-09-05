@@ -15,7 +15,7 @@ export default function Home() {
   return (
     <main className="min-h-screen p-8 max-w-5xl mx-auto">
       <div className="mb-10">
-        <h1 className="text-3xl font-bold text-white mb-1">🎙 Mr.Midnight</h1>
+        <h1 className="text-3xl font-bold text-white mb-1">🎙 Whispered Confessions</h1>
         <p className="text-gray-400">Automation Studio — choose a tool to get started</p>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">

@@ -9,7 +9,7 @@ const mono = Geist_Mono({ variable: "--font-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Automation Studio",
-  description: "Mr.Midnight — Voice & Video Automation",
+  description: "Whispered Confessions — Voice & Video Automation",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

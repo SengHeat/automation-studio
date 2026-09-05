@@ -806,7 +806,7 @@ def build_gradio_ui():
 
         # ── HOME ──────────────────────────────────────────────────────────
         with gr.Column(visible=True) as home_col:
-            gr.Markdown("# 🎙 Mr.Midnight — Automation Studio")
+            gr.Markdown("# 🎙 Whispered Confessions — Automation Studio")
             gr.Markdown("Choose a tool to get started:")
             with gr.Row():
                 btn_story   = gr.Button("✍️\nGenerate Story\nAI creates full story JSON",    elem_classes="menu-card")
@@ -999,7 +999,7 @@ def build_gradio_ui():
                             with gr.Row():
                                 channel = gr.Textbox(
                                     value="", label="Channel name",
-                                    placeholder="e.g. Mr.Midnight")
+                                    placeholder="e.g. Whispered Confessions")
                                 channel_corner = gr.Dropdown(
                                     ["top-right", "top-left", "bottom-right", "bottom-left"],
                                     value="top-right", label="Channel corner")

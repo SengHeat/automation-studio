@@ -384,7 +384,7 @@ export default function StudioPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Channel name</label>
-                  <input className="input" value={channel} onChange={e => setChannel(e.target.value)} placeholder="Mr.Midnight" />
+                  <input className="input" value={channel} onChange={e => setChannel(e.target.value)} placeholder="Whispered Confessions" />
                 </div>
                 <div>
                   <label className="label">Channel corner</label>

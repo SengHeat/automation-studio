@@ -12,7 +12,7 @@ export function NavUser() {
         </div>
         {open && (
           <div className="min-w-0">
-            <p className="text-xs font-medium text-gray-200 truncate">Mr.Midnight</p>
+            <p className="text-xs font-medium text-gray-200 truncate">Whispered Confessions</p>
             <p className="text-[10px] text-gray-500 truncate">Free plan</p>
           </div>
         )}
