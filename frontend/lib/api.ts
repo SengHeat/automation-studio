@@ -99,6 +99,13 @@ export async function startVideo(form: FormData): Promise<string> {
   return d.job_id;
 }
 
+export async function fetchTestStoryFixture(): Promise<File> {
+  const r = await fetch(`${BASE}/api/fixture/test-story`);
+  if (!r.ok) throw new Error("Test fixture not found on server");
+  const blob = await r.blob();
+  return new File([blob], "test_story_home_invasion.json", { type: "application/json" });
+}
+
 // ── ETA ───────────────────────────────────────────────────────────────────────
 
 export async function estimateEta(body: {

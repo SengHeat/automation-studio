@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { LogStream } from "@/components/LogStream";
 import {
   fetchConfig, startVideo, savePreset, loadPreset,
-  exportSrt, generateChapters, type AppConfig,
+  exportSrt, generateChapters, fetchTestStoryFixture, type AppConfig,
 } from "@/lib/api";
 import { Clapperboard, Subtitles, Paintbrush, Wrench, Menu } from "lucide-react";
 import { useSidebar } from "@/components/ui/Sidebar";
@@ -59,7 +59,8 @@ export default function VideoPage() {
   const [loadedFiles, setLoadedFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
 
-  const [voiceSource, setVoiceSource] = useState<"existing" | "generate">("generate");
+  const [voiceSource, setVoiceSource] = useState<"existing" | "generate" | "test">("generate");
+  const [fixtureLoading, setFixtureLoading] = useState(false);
   const [storyAuthors, setStoryAuthors] = useState("Anonymous");
   const [storyCardDuration, setStoryCardDuration] = useState(5);
   const [voiceOut, setVoiceOut] = useState("voice_final.mp3");
@@ -107,6 +108,26 @@ export default function VideoPage() {
     });
   }, []);
 
+  async function handleVoiceSourceChange(v: "existing" | "generate" | "test") {
+    setVoiceSource(v);
+    if (v !== "test") return;
+    setFixtureLoading(true);
+    try {
+      const file = await fetchTestStoryFixture();
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      if (storyJsonRef.current) {
+        storyJsonRef.current.files = dt.files;
+      }
+      setLoadedFiles([file]);
+    } catch {
+      alert("Could not load test fixture from server. Is the backend running?");
+      setVoiceSource("generate");
+    } finally {
+      setFixtureLoading(false);
+    }
+  }
+
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
@@ -126,7 +147,9 @@ export default function VideoPage() {
     Array.from(storyJsonRef.current.files).forEach(file => f.append("story_json", file));
     if (bgMusicRef.current?.files?.[0]) f.append("bg_music", bgMusicRef.current.files[0]);
     if (logoRef.current?.files?.[0]) f.append("logo", logoRef.current.files[0]);
-    f.append("voice_source", voiceSource);
+    const effectiveVoiceSource = voiceSource === "test" ? "generate" : voiceSource;
+    f.append("voice_source", effectiveVoiceSource);
+    f.append("video_only", String(voiceSource === "test"));
     f.append("voice_out", voiceOut);
     f.append("segments_output", segmentsOutput);
     f.append("story_authors", storyAuthors);
@@ -249,10 +272,24 @@ export default function VideoPage() {
                 </div>
                 <div>
                   <label className="label">Voice source</label>
-                  <select className="input" value={voiceSource} onChange={e => setVoiceSource(e.target.value as "existing" | "generate")}>
+                  <select
+                    className="input"
+                    value={voiceSource}
+                    onChange={e => handleVoiceSourceChange(e.target.value as "existing" | "generate" | "test")}
+                    disabled={fixtureLoading}
+                  >
                     <option value="generate">Generate voice</option>
                     <option value="existing">Use existing voice file</option>
+                    <option value="test">🧪 Test render (no voice)</option>
                   </select>
+                  {fixtureLoading && (
+                    <p className="text-[11px] text-blue-400 mt-1">Loading test story…</p>
+                  )}
+                  {voiceSource === "test" && !fixtureLoading && (
+                    <p className="text-[11px] text-yellow-500 mt-1">
+                      ⚡ Auto-loaded: 3 True Home Invasion Horror Stories · silent placeholder audio
+                    </p>
+                  )}
                 </div>
               </Section>
 

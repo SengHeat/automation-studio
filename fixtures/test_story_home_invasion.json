@@ -1,0 +1,270 @@
+{
+  "project": {
+    "title": "3 True Home Invasion Horror Stories",
+    "youtube_title": "3 TRUE Horror Stories About Someone Already Inside the House",
+    "thumbnail_text": "HE WAS ALREADY INSIDE",
+    "channel": "Nightmare Whispers",
+    "format": "Long-form horror narration",
+    "language": "English",
+    "voice_model": "VoxCPM2",
+    "estimated_duration": "26-28 minutes",
+    "story_count": 3,
+    "segment_count": 34,
+    "style": "Slow-burn, realistic, first-person horror as told by the original narrators",
+    "music": "None",
+    "sound_effects": "None",
+    "narration_notes": "Use a natural, calm, slow horror delivery. Add brief pauses before frightening reveals. Preserve first-person, conversational tone since these are told as real personal accounts. Narration below has been expanded from the original de-duplicated draft with added atmospheric/sensory detail and internal reflection (no repeated lines) to bring spoken runtime back up toward the ~26-28 minute target from the raw source transcript. Test segment 1 from each story before generating the complete narration.",
+    "category": "Home Invasion / Real Horror Stories",
+    "status": "draft",
+    "originality_note": "Adapted from real first-person personal accounts submitted by narrators; text cleaned of duplicated transcript lines, then expanded with additional descriptive/atmospheric narration while preserving the original events, voice, and details."
+  },
+  "starting": {
+    "title": "Intro",
+    "duration": "0:00-0:00",
+    "narration": "Every house has a version of itself that only exists after dark — the same walls, the same rooms, but somehow not the same place. Tonight, three people found that out the hard way. A weekend alone that wasn't as alone as it seemed. A dog that knew the truth long before her owner did. And a teenager who spent an entire day sharing his house with someone he never saw coming. These are true accounts, told exactly as they happened. If you're watching this alone, at night... you may want to check the locks first."
+  },
+  "stories": [
+    {
+      "story_number": 1,
+      "title": "The Den Light",
+      "estimated_duration": "0:00-8:13",
+      "youtube_title": "The Den Light Kept Turning Off While I Sat 12 Feet Away",
+      "thumbnail_text": "SOMEONE WAS IN THE HOUSE",
+      "characters": ["Narrator"],
+      "viewer_question": "... Have you ever noticed something small was wrong in your own house and talked yourself out of it? Drop it in the comments. I read every one.",
+      "segments": [
+        {
+          "segment": 1,
+          "duration": "0:00-0:24",
+          "visual_prompt": "A snow-covered cabin-style house sits alone at the edge of a quiet winter town, smoke rising from the chimney.",
+          "narration": "I was spending the weekend alone at my cabin-style house on the edge of town. It wasn't completely isolated — there were other houses nearby, but they were spread far enough apart that you could go the whole weekend without seeing a single neighbor, without a single car passing on the road out front. That distance was part of the appeal. I'd bought the place specifically because of how quiet it got once the sun went down, how the town noise faded until all that was left was wind moving through the trees. I'd planned this weekend for weeks. No calls, no plans, just me and the house and whatever the weather decided to do."
+        },
+        {
+          "segment": 2,
+          "duration": "0:24-0:56",
+          "visual_prompt": "Snow-laden pine trees surround a warmly lit house at dusk, fireplace glowing through large windows.",
+          "narration": "After the season's first heavy snow, everything was quieter than usual, the kind of quiet that presses against your ears until you notice your own breathing. The yard was buried under a clean, undisturbed layer of white. The woods behind the house looked deeper somehow, thicker, with snow weighing down every branch until the treeline blurred into a single dark shape against the sky. Inside, the fireplace was going, popping every few minutes, throwing orange light across the far wall. The big windows let in this pale, flat white light from outside, the kind that makes everything look like it's underwater. I loved that house. I had bought it for exactly this feeling — the isolation, the silence, the sense that nothing outside those windows could reach me."
+        },
+        {
+          "segment": 3,
+          "duration": "0:56-1:40",
+          "visual_prompt": "A man reads a book beside a crackling fireplace on a quiet snowy evening, content and relaxed.",
+          "narration": "That Friday night, I made dinner, ate slowly, and read by the fire until my eyes started to get heavy, and for those few hours everything felt right in a way it hadn't in a long time. Then I turned off the television and went to my room, running through a mental checklist out of habit more than necessity. I had everything I needed for the weekend — enough food that I wouldn't have to think about it, firewood stacked by the hearth, a book I'd been meaning to read for months finally cracked open on the nightstand. The plan was to do nothing. Just be there, let the weekend pass slowly, let the snow keep falling outside. That was all I wanted."
+        },
+        {
+          "segment": 4,
+          "duration": "1:40-2:22",
+          "visual_prompt": "A dark bedroom with a floor-to-ceiling glass wall reflecting the room, a dense treeline barely visible beyond it at night.",
+          "narration": "The house had always felt different after dark. During the day, it was bright and open — the kind of place that made you feel like you could see for miles, like nothing could sneak up on you. But at night, something about the geometry of it changed. The windows stopped behaving like windows and started behaving like mirrors, throwing my own reflection back at me instead of the world outside. My room had floor-to-ceiling glass running the length of one wall, facing directly into the treeline, and at night that wall turned into a dark, reflective sheet I couldn't see past no matter how long I stared."
+        },
+        {
+          "segment": 5,
+          "duration": "2:22-2:57",
+          "visual_prompt": "A shadowy shape shifts between two dark pine trunks just visible through a reflective bedroom window at night.",
+          "narration": "That night, though, because I'd left the lamp off, the room stayed dark enough that I could actually see past my own reflection into the trees outside, the pale trunks catching just enough moonlight to stand out against the black behind them. I stared for maybe 30 seconds, doing nothing but looking, the way you do when you're half asleep and not really thinking about anything. Then something shifted between two of the pine trunks — a shadow that moved into view, or maybe out of it, I genuinely couldn't tell which direction it had gone. I sat completely still for a long time after that, waiting for it to happen again, telling myself it was a branch, a deer, anything ordinary. Eventually I got up, checked that the sliding glass door was actually locked even though I already knew it was, and got back into bed feeling stupid for checking."
+        },
+        {
+          "segment": 6,
+          "duration": "2:57-3:29",
+          "visual_prompt": "Daylight streams through a quiet house, but a faint uneasy tension lingers as a man glances over his shoulder at a window.",
+          "narration": "The next day passed normally on the surface. I made coffee, sat by the window with my book, watched the snow keep falling in that slow, steady way it does when there's no wind to push it around. In the daylight, everything looked peaceful and quiet, the kind of scene you'd put on a postcard. But by midday, the feeling was back, low-level and steady, sitting somewhere behind my ribs like a held breath. It felt like something was just outside the frame of whatever window happened to be behind me. I'd glance back over my shoulder and see nothing — just glass, just trees, just snow. Move to another room, feel it start up again within minutes, like it followed me from room to room without ever showing itself."
+        },
+        {
+          "segment": 7,
+          "duration": "3:29-4:19",
+          "visual_prompt": "A dim hallway inside a house at night, one lamp visibly dark at the far end of an otherwise lit home.",
+          "narration": "As it got dark and the snow started coming down again, thicker this time, I settled into my usual spot by the fireplace — blanket over my legs, a soda on the side table, television on low, doing everything I could to make the evening feel normal again. About 20 minutes in, out of habit more than anything, I glanced down the hallway toward the den. The light was off. That struck me immediately, because I always left it on when I was alone in that house — always, without exception, some small rule I'd made for myself years ago and never questioned. I assumed the bulb had finally blown and got up to check on it. Sure enough, I flipped the switch, the light came back on, and I grabbed my drink and went back to the couch without thinking much more about it."
+        },
+        {
+          "segment": 8,
+          "duration": "4:19-5:06",
+          "visual_prompt": "A close-up of a light switch in the down, off position on a hallway wall, dark shadows around it.",
+          "narration": "Except twenty minutes later, I looked down that same hallway again, and the light was off a second time. This time I got up faster. I walked to the hallway entrance, and the switch was physically sitting in the down position — not flickering, not loose, not a dying bulb doing something erratic. Someone had flipped it with their hand. And they'd done it a second time, deliberately, knowing full well that I had already turned it back on and walked away, knowing I would notice, and doing it anyway."
+        },
+        {
+          "segment": 9,
+          "duration": "5:06-5:28",
+          "visual_prompt": "A man moves quietly and carefully through a dark hallway, staying far from a closed door at the end.",
+          "narration": "My mind went straight to logistics. My phone was charging in the bedroom, on the far side of the house. My car keys were sitting by the front door, which meant crossing right past the mouth of that hallway to reach them. I moved as quietly as I could along the opposite side of the house, keeping as much distance from the den as the layout would allow, listening for anything — footsteps, breathing, the creak of a floorboard — and hearing nothing but my own pulse. I made it to the bedroom without incident and grabbed the phone off the charger."
+        },
+        {
+          "segment": 10,
+          "duration": "5:28-6:06",
+          "visual_prompt": "Fresh footprints in deep snow lead directly to a window, ending where a motionless figure stands just outside, staring in.",
+          "narration": "And as I turned to head back out, something outside the bedroom window caught my eye and stopped me cold. Fresh footprints in the snow, deep and clean, cut a straight line from the treeline directly toward the glass — no wandering, no hesitation, just a straight path leading right up to where I was standing. And at the end of those footprints, close enough that I could see the texture of his coat, was a man standing maybe two feet from the window, completely still, not moving, not reacting to the light behind me, just standing there in the dark like he had all the time in the world."
+        },
+        {
+          "segment": 11,
+          "duration": "6:06-6:50",
+          "visual_prompt": "A car reverses fast out of a snowy driveway at night as a figure sprints around the corner of a house toward it.",
+          "narration": "I didn't wait to see what he'd do next. I got to the front door, out to the car, and got in, hands shaking so badly it took two tries to get the key into the ignition. The second the engine started, I saw the figure come sprinting around the corner of the house, straight at me, full speed, faster than I would have thought a person could move through that much snow. I reversed out of the driveway without checking the mirror, hit the road, and didn't slow down until the house was well behind me. When I finally did check the mirror, I could see him standing in the exact spot where the car had been, just standing there in the empty driveway, watching me drive away. The police arrived about 30 minutes later, and by then, of course, there was nothing left to find."
+        },
+        {
+          "segment": 12,
+          "duration": "6:50-7:36",
+          "visual_prompt": "A dark empty den viewed from a hallway, the light switch and doorway silhouetted, unsettling and still.",
+          "narration": "The worst part, honestly, isn't the man at the window. I've had time to sit with that image and it doesn't scare me the way it used to. The worst part is the two days before that — every hour I spent not knowing. The feeling every single time I stood with my back to a window, certain something was there and telling myself it wasn't. The shadow I saw shift between the trees that first night, the one I talked myself out of because it was easier than the alternative. The den light that went off twice while I sat twelve feet away with my back turned, close enough to hear if a floorboard so much as sighed. They were in that house long before I ever ran — for hours, at least, maybe far longer than that. I will never know exactly how long, and I will never know what was actually waiting in that dark room while I sat by the fire congratulating myself on how peaceful the weekend was."
+        },
+        {
+          "segment": 13,
+          "duration": "7:36-8:13",
+          "visual_prompt": "A peaceful snow-covered house seen from the road in daylight, warm light in the windows, no longer ominous.",
+          "narration": "I sold the house not long after. Couldn't bring myself to spend another night there, not even to pack. The person who bought it has lived there for two years now. I looked it up once, late at night, scrolling through old listings until I found it — I don't fully know why I did that, what I was hoping to find. Maybe I just needed to know that someone else was living in those rooms and was okay, that whatever had been out there that weekend hadn't come back, or had moved on to somewhere else entirely. From what I could tell, they seemed to be. I hope they still are."
+        }
+      ]
+    },
+    {
+      "story_number": 2,
+      "title": "Piper",
+      "estimated_duration": "8:20-19:57",
+      "youtube_title": "My Dog Stood Guard at the Bedroom Door Every Night and I Didn't Understand Why",
+      "thumbnail_text": "SHE KNEW BEFORE I DID",
+      "characters": ["Noah (Narrator)", "Piper (the dog)", "The Intruder"],
+      "viewer_question": "... Has a pet ever tried to warn you about something before you understood what it meant? Drop it in the comments. I read every one.",
+      "segments": [
+        {
+          "segment": 1,
+          "duration": "8:20-8:44",
+          "visual_prompt": "A man stands alone in the entryway of a large, mostly empty house, the space clearly too big for one person.",
+          "narration": "My name is Noah. I am 36 years old, and this happened about two years ago now, though some nights it still feels recent enough to reach out and touch. My wife and I separated just a few months after we bought a house together, which in hindsight should have told me something about the timing of everything. We had bought big — way too big for just the two of us, four bedrooms and a finished basement and a yard that took an entire Saturday to mow, all of it picked out with a future in mind that never actually arrived."
+        },
+        {
+          "segment": 2,
+          "duration": "8:44-9:29",
+          "visual_prompt": "A row of closed doors line a quiet hallway inside a large, sparsely used house.",
+          "narration": "After the split, I could not afford to sell at a loss, not without eating a number I genuinely couldn't absorb, so I stayed. Alone, in a house that had been built for a family that was never going to happen now. I rattled around that place for two full years, my footsteps the only sound most days. I kept telling myself I would eventually use the space — turn one of the bedrooms into an office, the basement into something, anything. None of it happened. Most of the rooms just stayed closed, doors shut, lights off, entire sections of the house I might go weeks without entering. I thought the size of the place would bother me less over time, that I'd get used to it the way you get used to anything. It didn't work out that way. If anything, it got harder the longer I stayed. Too many rooms with no reason to ever go into them. Too much quiet coming from directions a house that size just shouldn't be quiet in."
+        },
+        {
+          "segment": 3,
+          "duration": "9:29-10:08",
+          "visual_prompt": "A young beagle sits calmly in the passenger seat of a car during a long drive home.",
+          "narration": "Eventually, a friend suggested a dog, half-joking, and it stuck with me longer than I expected it to. I drove three hours out to a shelter I'd found online and came home with Piper — eight months old, a beagle, soft floppy ears, this calm, unbothered face that made the staff's whole pitch for her. They told me she was sweet, well-behaved, good with strangers, everything you'd want. On the drive home she was exactly that — excited, easy, curious about every smell coming through the cracked window, nose pressed to the glass half the ride. But the moment I carried her through the front door of that house, something in her shifted, almost instantly, like a switch had been thrown the second her paws touched the floor."
+        },
+        {
+          "segment": 4,
+          "duration": "10:08-11:00",
+          "visual_prompt": "A small dog presses tightly against a man's leg on a couch, ears alert, eyes scanning the room nervously.",
+          "narration": "She went quiet. Not the shy, uncertain quiet of a dog adjusting to somewhere new — I'd read enough about that to know the difference. This was something more deliberate, more like caution, like she had walked through that door and immediately picked up on something I couldn't sense at all. I set her down and gave her room to explore on her own terms. She spent maybe two minutes moving slowly through the ground floor, sniffing at doorframes, pausing at certain thresholds longer than others. Then, without any real transition, she jumped onto the couch next to me and pressed herself hard against my leg, her whole body tense, eyes moving constantly around the room, tail down flat, ears up. I told myself it was just adjustment. New dog, new house, new smells — of course she was on edge."
+        },
+        {
+          "segment": 5,
+          "duration": "11:00-12:02",
+          "visual_prompt": "A dog stands frozen and staring at a blank wall in an empty, unused room of a house.",
+          "narration": "The next morning, she seemed better, almost like a different dog. She followed me into the kitchen while I made coffee, sat and ate her breakfast without any of the previous night's tension, curled up and slept under my desk for a couple of hours while I worked through emails. Normal enough that I actually let myself relax about it. Then, around noon, she stood up quietly, without any warning, and walked out of the room. I heard her nails clicking against the hardwood, heading toward the stairs, down toward the ground floor. About ten minutes later, the barking started. Not playful, not boredom-driven, nothing like the barking I'd already gotten used to hearing when a squirrel crossed the yard. This was alarm barking, urgent and loud, the kind that carries through an entire house and puts your whole body on alert before your brain even catches up. I ran downstairs and moved through every room, calling her name, and finally found her in one of the empty rooms I barely ever set foot in, standing dead center in the floor, completely rigid, staring at the far wall like it had done something."
+        },
+        {
+          "segment": 6,
+          "duration": "12:02-13:16",
+          "visual_prompt": "A dog stands rigid at a dark bedroom doorway at night, ears up, staring intently down a dim hallway.",
+          "narration": "That night, I woke up at some point in the dark, for no reason I could identify. No alarm going off, no sound I could point to, nothing I was conscious of hearing that would have pulled me out of sleep. I just opened my eyes, and there was Piper standing at the bedroom door, right at the threshold, half in shadow, ears fully up, body completely still in a way that dogs usually aren't even at rest. She was staring through the narrow gap in the doorway into the dark hallway beyond it. I said her name, quietly, half-asleep. She did not move, didn't so much as twitch an ear toward me. I said it again, louder this time, and she glanced back at me for exactly one second before turning her focus straight back to that gap in the door. And I just... turned over and went back to sleep. Looking back now, I genuinely cannot believe I did that."
+        },
+        {
+          "segment": 7,
+          "duration": "13:16-13:44",
+          "visual_prompt": "A dog silhouetted against a dark hallway, holding a protective, watchful stance at a bedroom door night after night.",
+          "narration": "It didn't occur to me at the time what I was actually looking at. She was standing directly between me and that hallway in the dark, not resting, not bored, not doing any of the aimless things dogs do at 3 a.m. — she was working. And I only learned much later that she had been doing this every single night since we moved in, not just that one time I happened to wake up and catch her at it. While I slept, oblivious, she held that exact position at the door, night after night, without fail, holding a line I didn't even know needed holding."
+        },
+        {
+          "segment": 8,
+          "duration": "13:44-15:03",
+          "visual_prompt": "A dog cowers shivering in the corner of an empty room, staring fearfully back toward a doorway a man just walked through.",
+          "narration": "The next afternoon, I noticed the house had gone quiet in that specific way it only did when Piper wasn't somewhere in it — a kind of silence with a shape missing from it. I called her name, waited, got nothing back. Walked through every room on the ground floor and upstairs, checking under furniture, calling louder each time, and still nothing. Then I noticed the door to that same empty downstairs room, the one she'd frozen in front of before, was cracked open a few inches. I pushed it the rest of the way. She was in the far corner, pressed into the wall, shivering hard enough that I could see it from the doorway, and she wasn't looking at me at all — she was looking past me, at the doorway I had just walked through, like she was watching to see what might follow me in before she'd even consider coming to me. Something about the way she was staring made me turn around and look back down the hallway myself. And for just a fraction of a second, I caught a glimpse of someone standing at the far end of it."
+        },
+        {
+          "segment": 9,
+          "duration": "15:03-16:03",
+          "visual_prompt": "A man crouches behind a locked door with a trembling dog, listening to slow footsteps approach on the other side.",
+          "narration": "Piper started whimpering low in her throat, eyes locked on the gap at the bottom of the door, and I stayed completely still, trying to control my own breathing so I wouldn't make a sound. Whoever it was, he did not move. No hand on the door handle, no voice, no sound at all coming from his direction — just the certainty that someone was standing there, perfectly patient, on the other side of that wall. I slammed the door shut and locked it, my hands moving faster than my brain was processing anything. Got down to Piper and crouched next to her, and she pressed her whole body against me, shaking hard enough that I could feel it through my own chest. A few seconds later, footsteps started in the hallway — quiet, unhurried, deliberate, coming steadily toward the door. He stopped right on the other side of it."
+        },
+        {
+          "segment": 10,
+          "duration": "16:03-16:40",
+          "visual_prompt": "A dim hallway at night, footsteps fading slowly away into darkness after standing still for a long time.",
+          "narration": "We stayed like that for what felt like a very long time, neither of us moving, Piper's shaking slowly settling into something quieter but no less alert. Eventually, he turned and walked slowly back down the hallway, the same unhurried pace as before. I counted his footsteps out of some instinct I didn't understand at the time, listening until I genuinely could not hear them anymore. What I couldn't stop thinking about afterward, replaying it over and over, was just how calm the whole thing had been. No rushing, no anger in the way he moved, no trace of panic on his end at all. He was in no danger of being caught, and some part of him clearly knew that. He felt absolutely no urgency."
+        },
+        {
+          "segment": 11,
+          "duration": "16:40-17:53",
+          "visual_prompt": "A police officer shines a flashlight into a modified closet filled with clothing and food wrappers, evidence of someone living there.",
+          "narration": "When the police finally searched the house properly, they found evidence in the room directly next to my home office — the room I sat and worked in every single day, sometimes for eight or nine hours at a stretch, close enough to hear a pin drop if I'd only been listening in the right direction. His belongings were there, laid out in a way that suggested some kind of routine. Clothing folded, food wrappers stacked rather than scattered. The closet had been modified slightly, just enough to sleep in comfortably, a setup that had clearly taken more than one night to put together. He would stay in that closet during the day, silent, while I worked ten feet away on the other side of a wall, then come out at night once I was asleep. Months of this. Not days — months."
+        },
+        {
+          "segment": 12,
+          "duration": "17:53-19:08",
+          "visual_prompt": "A man sits quietly with his dog, realization settling in as he looks toward the floor above an unused room.",
+          "narration": "Once I finally understood what had been happening, every single piece fell into place at once, all at the same time, and it was almost worse than not knowing. The room Piper had barked at that very first day, the wall she'd stared at — it sat directly below the room he'd been using. She'd heard him moving above her through the floor, days before I ever caught a glimpse of anything. The night she stood frozen at the bedroom door, he was probably in that exact hallway at that exact moment, close enough to touch if the door hadn't been between us. All the nights I woke up for no reason I could name. All the small sounds I dismissed as the house settling, the pipes, the wind. She had been telling me, in every single way available to a dog, that something in that house was deeply wrong. I just didn't understand what she was saying, not until it was almost too late to matter."
+        },
+        {
+          "segment": 13,
+          "duration": "19:08-19:57",
+          "visual_prompt": "A dog sleeps peacefully and relaxed on a couch in a small, bright, cozy apartment.",
+          "narration": "I sold the house not long after, took whatever loss came with it, and moved into a small two-room apartment on the other side of town. Piper came with me, obviously — there was never a version of this where I left her behind. She is a completely different dog there. Relaxed, genuinely happy, sleeps anywhere she wants at any hour without a care in the world. No more barking at walls for no visible reason, no more standing guard at the bedroom door in the dark while I slept obliviously a few feet away. She has been completely fine, without a single incident, from the very first day we left that house behind."
+        }
+      ]
+    },
+    {
+      "story_number": 3,
+      "title": "Footsteps",
+      "estimated_duration": "19:57-26:23",
+      "youtube_title": "He Was Inside My House Since Before Noon and I Never Knew",
+      "thumbnail_text": "HE WAS THERE ALL DAY",
+      "characters": ["Narrator (18-year-old)", "Friend across the street", "The Intruder"],
+      "viewer_question": "... Have you ever felt like something in your own house didn't add up, and been right? Drop it in the comments. I read every one.",
+      "segments": [
+        {
+          "segment": 1,
+          "duration": "19:57-20:21",
+          "visual_prompt": "A teenager relaxes alone in a suburban house on an ordinary weekend afternoon, parents' car absent from the driveway.",
+          "narration": "I was 18 at the time, still living at home with my parents, still in that in-between stretch before everything about your life is technically your own responsibility. They were going away for a couple of days for something unrelated, and I was old enough by then that leaving me home alone wasn't something anyone gave a second thought to. It wasn't the first time, and it wouldn't have registered as anything unusual to anyone who knew us."
+        },
+        {
+          "segment": 2,
+          "duration": "20:21-20:47",
+          "visual_prompt": "A teenager plays video games with a headset on in a bedroom during a lazy afternoon.",
+          "narration": "My usual routine on days like that was about as uneventful as it gets — sleep in well past a reasonable hour, watch some television, play video games online with a few friends for most of the afternoon. I didn't have a car yet, which meant there wasn't much reason to leave the house even if I'd wanted to. That particular day started exactly like every other one. I slept in, made breakfast way later than I should have, and settled in for a long, lazy stretch of nothing."
+        },
+        {
+          "segment": 3,
+          "duration": "20:47-21:41",
+          "visual_prompt": "A man in plain clothes walks slowly along the front of a suburban house, pausing to peer into each window.",
+          "narration": "That afternoon, in the middle of a game, my friend from across the street sent me a message that pulled my attention away from the screen. He said he'd seen a man outside my house, someone he'd never seen around the neighborhood before. Said the guy was walking slowly along the front of the house, stopping deliberately at each window, looking in one after another — not the way someone waits for a person to answer a door, more like he was checking something, cataloguing it. I read the message, shrugged it off, and went back to the game. I'd done this before, stayed home alone for a whole weekend without a single issue, and I genuinely didn't expect this time to be any different from all the others."
+        },
+        {
+          "segment": 4,
+          "duration": "21:41-22:34",
+          "visual_prompt": "A teenager stands at a kitchen counter making dinner, startled by a shadow moving across the wall behind him.",
+          "narration": "Around 5, I finally got off the call and went downstairs to put dinner together. I was standing at the kitchen counter with my back to the rest of the room, chopping something, half paying attention, when I saw a shadow move across the wall directly in front of me. It wasn't a car light passing by outside — those move fast, sweep across in a second and gone. This was too slow, too deliberate, like something walking rather than driving. I turned around fast, knife still in my hand without thinking about it. The living room behind me was completely empty. Then I looked at the window. I walked over and looked out at the street, the driveway, the yard. Nothing. No cars, no movement, nothing to explain what I'd just seen."
+        },
+        {
+          "segment": 5,
+          "duration": "22:34-23:37",
+          "visual_prompt": "A teenager pauses on the stairs at night, staring uneasily at a dark gap of hallway under a closed bedroom door.",
+          "narration": "By that point I'd mostly talked myself out of it, chalked the shadow up to something ordinary, and gone about the rest of my evening. I had been in bed watching television for a couple of hours, the room lit only by the screen, when I realized I hadn't bothered turning on any of the downstairs lights all night — just left the television running and gone up without a second thought. And I kept finding myself glancing at the crack under my bedroom door, at the dark hallway beyond it, dark in the exact same way it always was, every single night. Except tonight, for whatever reason, that darkness actually bothered me, sat wrong in a way I couldn't explain. I paused the show, told myself out loud that I was being ridiculous, and went downstairs, using a snack as an excuse to turn every single light on the way down and the way back up."
+        },
+        {
+          "segment": 6,
+          "duration": "23:37-24:40",
+          "visual_prompt": "A man is seen through a window across the street climbing quickly out of a house's side window and running toward trees.",
+          "narration": "I ran the rest of the way up the stairs faster than I needed to and locked my bedroom door behind me, then called the police with one hand while texting my friend with the other, some part of me needing him to know what was happening in real time. He went to his window while we were still on the call, and a couple of minutes in, his voice changed completely. He said, 'Oh god,' and then told me he'd just watched a man climb out of the side window of my house and sprint into the trees behind the property. Same description as the man from that morning, the one he'd messaged me about. And that meant this man had been inside my house since before noon — through every hour of my game call, through me standing at the counter making dinner with my back turned, through me lying in bed watching television directly above wherever he'd been hiding."
+        },
+        {
+          "segment": 7,
+          "duration": "24:40-25:25",
+          "visual_prompt": "Police officers search a suburban house at night with flashlights while a teenager waits on the porch.",
+          "narration": "Police came out and searched every room, every closet, the attic, the crawlspace under the house, all of it. Then, almost as an afterthought, one of the officers mentioned something that stuck with me a lot longer than anything else that night. A similar incident had happened in a nearby neighborhood a couple of weeks earlier — a kid home alone, someone trying to talk them into opening a window from outside. Never caught, that time either. And they didn't catch this person either, not that night, not since. What he actually wanted, I genuinely still don't know. He had an entire day, start to finish, and he never made a single move against me the whole time. Maybe he was waiting for it to get later. Maybe he was waiting for something else entirely."
+        },
+        {
+          "segment": 8,
+          "duration": "25:25-26:23",
+          "visual_prompt": "A quiet suburban kitchen in daylight, empty and still, as if someone had just silently passed through it unnoticed.",
+          "narration": "I think a lot about what I know now that I had no way of knowing that day. He was in that house from early in the morning, while I made breakfast without a single thought in my head, while I spent hours completely absorbed in a game call with friends who had no idea anything was wrong. A shadow crossed the kitchen wall right in front of me and I explained it away in about four seconds flat, went right back to what I was doing. He was somewhere in that house the entire time, moving only when I moved, timing his own footsteps to mine so the sounds would blend together and disappear into the normal noise of a house being lived in. That is not something a person does by accident. That takes real patience, and it takes practice, and it means he had done this, or something like it, before."
+        }
+      ]
+    }
+  ],
+  "ending": {
+    "title": "End Screen",
+    "duration": "26:23-28:16",
+    "narration": "A woman who backed away from a dark hallway instead of walking straight into it, trusting an instinct she couldn't explain. A man who finally listened, months too late but not too late to matter, to what his dog had been trying to tell him the entire time. And a teenager who happened to pause on the stairs at exactly the right moment and heard something that had no business being in that house at all. Three houses. Three ordinary nights that stopped being ordinary. That is all it took, in every case — one moment where something almost slipped past unnoticed, and didn't. I think about the staircase a lot, longer than I probably should. How completely ordinary it felt right up until the second it didn't. One pause, one wrong beat, one shadow that moved just a little too slow. I think about the footsteps on the stairs more than almost anything else — the fact that he was moving through that house all day long, matching his pace to mine so carefully that the sounds simply disappeared into everything else. That takes patience most people don't have. That takes practice most people would never think to get. The shadow in the kitchen. The feeling upstairs, low and steady, that never fully went away. If this story kept you up tonight, the next one is going to be worse. Watch it here."
+  }
+}

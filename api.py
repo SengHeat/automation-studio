@@ -100,12 +100,31 @@ import asyncio
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+FIXTURE_DIR = Path("fixtures")
+TEST_STORY_FIXTURE = FIXTURE_DIR / "test_story_home_invasion.json"
+
 
 async def _save_upload(file: UploadFile) -> str:
     dest = UPLOAD_DIR / f"{uuid.uuid4()}_{file.filename}"
     content = await file.read()
     dest.write_bytes(content)
     return str(dest)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FIXTURE — test story for structure validation renders
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/fixture/test-story")
+async def get_test_story_fixture():
+    """Return the built-in Home Invasion test story JSON for structure-validation renders."""
+    if not TEST_STORY_FIXTURE.exists():
+        raise HTTPException(status_code=404, detail="Test fixture not found")
+    return FileResponse(
+        str(TEST_STORY_FIXTURE),
+        media_type="application/json",
+        filename="test_story_home_invasion.json",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -340,6 +359,7 @@ async def run_video(
     logo_corner: str = Form("bottom-right"),
     channel: str = Form(""),
     channel_corner: str = Form("top-right"),
+    video_only: bool = Form(False),
     voice_ref: Optional[UploadFile] = File(None),
     voice_file: Optional[UploadFile] = File(None),
     bg_music: Optional[UploadFile] = File(None),
@@ -364,7 +384,7 @@ async def run_video(
         "bg_percent": bg_percent, "auto_amb": auto_amb,
         "voice_out": os.path.abspath(voice_out or "voice_final.mp3"),
         "segments_output": os.path.abspath(segments_output or "segments_audio"),
-        "video_out": video_out or "", "video_only": False,
+        "video_out": video_out or "", "video_only": video_only,
         "resolution": resolution, "fps": fps, "crf": crf,
         "transition_duration": transition_duration, "effect_style": effect_style,
         "enable_subtitles": enable_subtitles, "subtitle_size": subtitle_size,
