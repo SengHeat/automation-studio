@@ -216,6 +216,23 @@ def run_make_video(cfg, log, progress):
 
     clips_folder = cfg.get("clips_folder") or (
             os.path.splitext(os.path.abspath(cfg["json"]))[0] + "_stock_clips")
+
+    # Auto bg music: build per-segment mood composite when no manual track is set
+    if cfg.get("auto_bg_music") and not (cfg.get("bg_music") or "").strip():
+        from .bg_music import build_segment_bg_plan, build_bg_composite, attribution_text
+        bg_cache = os.path.join(clips_folder, "_bg_music_cache")
+        log("  🎵 Auto BG music: detecting moods and downloading tracks...")
+        bg_plan = build_segment_bg_plan(segments, bg_cache, log)
+        composite_path = os.path.join(clips_folder, "_bg_composite.mp3")
+        result = build_bg_composite(voice, bg_plan, composite_path, log)
+        if result:
+            cfg["bg_music"] = result
+            attr = attribution_text(bg_plan)
+            if attr:
+                log("  📋 Attribution:\n" + attr)
+        else:
+            log("  ⚠️  Auto BG music composite failed — continuing without background music")
+
     cfg["bg_music"] = _resolve_bg_music(cfg, clips_folder, log)
     missing = 0
     json_base = os.path.dirname(os.path.abspath(cfg["json"]))
