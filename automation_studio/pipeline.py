@@ -28,6 +28,21 @@ def _flatten_segments(data):
     narration_note = project.get("narration_notes", "Slow, restrained horror narration.")
     flat = []
     global_id = 1
+    starting = data.get("starting")
+    if isinstance(starting, dict):
+        intro_text = starting.get("narration") or starting.get("target_text", "")
+        if intro_text:
+            flat.append({
+                "segment_id": global_id,
+                "title": starting.get("title", "Intro"),
+                "duration": starting.get("duration", ""),
+                "stock_query": "dark house night horror atmospheric",
+                "video_feed_description": starting.get("visual_prompt", "A dark house at night, shadows shifting."),
+                "control_instruction": "Slow, atmospheric horror intro narration.",
+                "target_text": intro_text,
+                "narration": intro_text,
+            })
+            global_id += 1
     for story in stories:
         for seg in story.get("segments", []):
             segment = dict(seg)
